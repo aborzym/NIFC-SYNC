@@ -21,10 +21,19 @@ TRANSCRIPTION_EXTENSIONS = {
 }
 
 
-def find_files_with_extensions(folder, extensions):
+def find_files_with_extensions(
+    folder,
+    extensions,
+    ignored_directory_prefixes=(),
+):
     matching_files = []
 
-    for directory, _, filenames in os.walk(folder):
+    for directory, subdirectories, filenames in os.walk(folder):
+        subdirectories[:] = [
+            name
+            for name in subdirectories
+            if not name.startswith(ignored_directory_prefixes)
+        ]
         directory_path = Path(directory)
 
         for filename in filenames:
@@ -40,6 +49,7 @@ def find_existing_scores(folder):
     return find_files_with_extensions(
         folder,
         SCORE_EXTENSIONS,
+        ignored_directory_prefixes=(".skany_tmp_",),
     )
 
 

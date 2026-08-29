@@ -133,6 +133,31 @@ def validate_archive(
             )
 
 
+def validate_extracted_djvu(staging_folder: Path) -> list[Path]:
+    djvu_files = list(staging_folder.rglob("*.djvu"))
+
+    if not djvu_files:
+        raise ValueError(
+            "Archiwum nie zawiera plików DjVu."
+        )
+
+    empty_files = [
+        path
+        for path in djvu_files
+        if path.stat().st_size == 0
+    ]
+
+    if empty_files:
+        names = ", ".join(
+            path.name for path in empty_files
+        )
+        raise ValueError(
+            f"Archiwum zawiera puste pliki DjVu: {names}"
+        )
+
+    return djvu_files
+
+
 def download_and_extract(
     session: requests.Session,
     info: DownloadInfo,
@@ -216,15 +241,9 @@ def download_and_extract(
                     staging_folder
                 )
 
-            djvu_files = list(
-                staging_folder.rglob("*.djvu")
+            validate_extracted_djvu(
+                staging_folder
             )
-
-            if not djvu_files:
-                raise ValueError(
-                    "Archiwum nie zawiera "
-                    "plików DjVu."
-                )
 
             staging_folder.rename(
                 scans_folder
