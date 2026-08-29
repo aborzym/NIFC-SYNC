@@ -1,0 +1,1 @@
+"""Interfejs graficzny NIFC-SYNC."""
