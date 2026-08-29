@@ -5,6 +5,7 @@ from core.catalog import (
     build_scan_indexes,
     get_available_workflows,
 )
+from core.cleanup import cleanup_scan_staging_folders
 from core.filesystem import (
     format_file_size,
 )
@@ -123,6 +124,8 @@ def main():
             raise SystemExit
     
     print("✓ Folder z Maca jest dostępny.")
+
+    cleanup_scan_staging_folders(base_dir)
     
     inventory = build_storage_inventory(
         base_dir,
