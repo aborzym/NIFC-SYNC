@@ -1,7 +1,5 @@
 import base64
-import os
 import re
-import subprocess
 from pathlib import Path
 
 import requests
@@ -20,6 +18,7 @@ from core.scans import (
     get_scan_group_key,
     normalize_scan_url,
 )
+from core.storage import is_mounted, mount_cifs
 
 
 def ask_yes_no(question):
@@ -150,19 +149,12 @@ for file in selected["files"]:
 
 base_dir = Path.home() / "mac_transkrypcje"
 
-if not os.path.ismount(base_dir):
+if not is_mounted(base_dir):
     print("\nMac nie jest zamontowany. Próbuję połączyć...")
 
-    result = subprocess.run(
-        [
-            "sudo",
-            "mount.cifs",
-            "//Mac-Studio-Andrzej.local/TRANSKRYPCJE 2026",
-            str(base_dir),
-            "-o",
-            f"credentials={Path.home() / '.smbcredentials'},vers=3.0,uid={os.getuid()},gid={os.getgid()}",
-        ],
-        check=False,
+    result = mount_cifs(
+        base_dir,
+        Path.home() / ".smbcredentials",
     )
 
     if result.returncode != 0:
