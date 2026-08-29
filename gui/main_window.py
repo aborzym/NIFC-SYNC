@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from PySide6.QtCore import QThread
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.workers import CatalogLoader
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -21,6 +24,9 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("NIFC-SYNC 3.0")
         self.setMinimumSize(760, 560)
+        self.workflows = {}
+        self.catalog_thread = None
+        self.catalog_worker = None
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -63,6 +69,10 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central_widget)
         self.statusBar().showMessage("Gotowy")
+
+        self.destination_edit.textChanged.connect(
+            self._update_sync_button
+        )
 
     def _create_workflow_group(self):
         group = QGroupBox("Workflow")
@@ -111,4 +121,84 @@ class MainWindow(QMainWindow):
         self.log_view.append(
             "Interfejs uruchomiony. Silnik synchronizacji "
             "nie jest jeszcze podłączony."
+        )
+
+    def load_catalog(self):
+        self.statusBar().showMessage("Łączenie z NIFC…")
+        self.sync_button.setEnabled(False)
+
+        self.catalog_thread = QThread(self)
+        self.catalog_worker = CatalogLoader()
+        self.catalog_worker.moveToThread(self.catalog_thread)
+
+        self.catalog_thread.started.connect(
+            self.catalog_worker.run
+        )
+        self.catalog_worker.log.connect(self.log_view.append)
+        self.catalog_worker.loaded.connect(
+            self._catalog_loaded
+        )
+        self.catalog_worker.failed.connect(
+            self._catalog_failed
+        )
+        self.catalog_worker.finished.connect(
+            self.catalog_thread.quit
+        )
+        self.catalog_worker.finished.connect(
+            self.catalog_worker.deleteLater
+        )
+        self.catalog_thread.finished.connect(
+            self.catalog_thread.deleteLater
+        )
+        self.catalog_thread.finished.connect(
+            self._catalog_thread_finished
+        )
+
+        self.catalog_thread.start()
+
+    def _catalog_loaded(self, workflows, user_name):
+        self.workflows = {
+            workflow["name"]: workflow
+            for workflow in workflows
+        }
+
+        radio_buttons = {
+            "KRN-diplomatic": self.diplomatic_radio,
+            "KRN-modern": self.modern_radio,
+            "XML": self.xml_radio,
+        }
+        labels = {
+            "KRN-diplomatic": "KRN diplomatic",
+            "KRN-modern": "KRN modern",
+            "XML": "XML",
+        }
+
+        for workflow_name, radio_button in radio_buttons.items():
+            workflow = self.workflows.get(workflow_name)
+            file_count = len(workflow["files"]) if workflow else 0
+            radio_button.setText(
+                f"{labels[workflow_name]} ({file_count})"
+            )
+            radio_button.setEnabled(workflow is not None)
+
+        self.statusBar().showMessage(
+            f"Połączono jako: {user_name}"
+        )
+        self._update_sync_button()
+
+    def _catalog_failed(self, message):
+        self.log_view.append(f"BŁĄD: {message}")
+        self.statusBar().showMessage("Błąd połączenia")
+
+    def _catalog_thread_finished(self):
+        self.catalog_thread = None
+        self.catalog_worker = None
+
+    def _update_sync_button(self):
+        has_catalog = bool(self.workflows)
+        has_destination = bool(
+            self.destination_edit.text().strip()
+        )
+        self.sync_button.setEnabled(
+            has_catalog and has_destination
         )
