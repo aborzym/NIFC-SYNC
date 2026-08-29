@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Credentials and local configuration
+.nifccredentials
+.smbcredentials
+*.credentials
+.env
+.env.*
+
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary and generated files
+*.part
+.skany_tmp_*/
+problem.txt
