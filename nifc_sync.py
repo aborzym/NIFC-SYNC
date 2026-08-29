@@ -1,4 +1,3 @@
-import base64
 from pathlib import Path
 
 import requests
@@ -9,7 +8,6 @@ from core.catalog import (
     get_available_workflows,
 )
 from core.filesystem import (
-    find_existing_transcriptions,
     format_file_size,
 )
 from core.inventory import build_storage_inventory
@@ -19,6 +17,7 @@ from core.scans import (
     get_scan_group_key,
 )
 from core.storage import is_mounted, mount_cifs
+from core.sync import sync_transcriptions
 
 
 def ask_yes_no(question):
@@ -139,88 +138,14 @@ def main():
     existing_scans_by_url = inventory.existing_scans_by_url
     next_number = inventory.next_number
 
-    missing = []
-    
-    workflow_codes = {
-        "XML": "XML",
-        "KRN-modern": "M",
-        "KRN-diplomatic": "D",
-    }
-    
-    workflow_code = workflow_codes.get(selected["name"])
-    
-    created_count = 0
-    downloaded_count = 0
-    skipped_count = 0
     downloaded_scan_packages = 0
-    
-    target_folders = {}
-    
-    print("\nPorównanie:")
-    
-    for file in selected["files"]:
-        api_name = file["name"]
-        api_stem = Path(api_name).stem
-    
-        match = next((folder for folder in folder_names if api_stem in folder), None)
-    
-        if match:
-            print(f"ISTNIEJE: {api_name}")
-            print(f"        -> {match}")
-    
-            existing_folder = base_dir / match
-    
-            target_folder = existing_folder
-    
-            existing_transcriptions = find_existing_transcriptions(
-                target_folder,
-                selected["name"],
-            )
-    
-            if existing_transcriptions:
-                skipped_count += 1
-                names = ", ".join(path.name for path in existing_transcriptions)
-                print(f"POMIJAM: transkrypcja już istnieje: {names}")
-            else:
-                file_content = base64.b64decode(file["content"])
-                file_path = target_folder / api_name
-                file_path.write_bytes(file_content)
-                downloaded_count += 1
-                print(f"ZAPISANO TRANSKRYPCJĘ: {file_path.name}")
-    
-        else:
-            print(f"BRAK:    {api_name}")
-            missing.append(file)
-    
-            folder_name = f"{next_number:03d} - {workflow_code} - {Path(api_name).stem}"
-    
-            new_folder = base_dir / folder_name
-    
-            target_folder = new_folder
-    
-            if not new_folder.exists():
-                new_folder.mkdir()
-                created_count += 1
-                print(f"UTWORZONO FOLDER: {new_folder.name}")
-    
-            existing_transcriptions = find_existing_transcriptions(
-                target_folder,
-                selected["name"],
-            )
-    
-            if existing_transcriptions:
-                skipped_count += 1
-                names = ", ".join(path.name for path in existing_transcriptions)
-                print(f"POMIJAM: transkrypcja już istnieje: {names}")
-            else:
-                file_content = base64.b64decode(file["content"])
-                file_path = target_folder / api_name
-                file_path.write_bytes(file_content)
-                downloaded_count += 1
-                print(f"ZAPISANO TRANSKRYPCJĘ: {file_path.name}")
-    
-            next_number += 1
-        target_folders[api_name] = target_folder
+    transcription_result = sync_transcriptions(
+        selected,
+        base_dir,
+        folder_names,
+        next_number,
+    )
+    target_folders = transcription_result.target_folders
     
     print("\nKontrola skanów:")
     
@@ -337,10 +262,19 @@ def main():
     
     print("\n" + "─" * 32)
     print("GOTOWE")
-    print(f"Utworzono folderów:          {created_count}")
-    print(f"Pobrano transkrypcji:        {downloaded_count}")
+    print(
+        "Utworzono folderów:          "
+        f"{transcription_result.created_count}"
+    )
+    print(
+        "Pobrano transkrypcji:        "
+        f"{transcription_result.downloaded_count}"
+    )
     print(f"Pobrano pakietów skanów:     {downloaded_scan_packages}")
-    print(f"Pominięto transkrypcji:      {skipped_count}")
+    print(
+        "Pominięto transkrypcji:      "
+        f"{transcription_result.skipped_count}"
+    )
     print("─" * 32)
 
 
