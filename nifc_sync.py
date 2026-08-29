@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import requests
-
 from core.client import NifcClient, load_credentials
 from core.catalog import (
     build_scan_indexes,
@@ -11,11 +9,7 @@ from core.filesystem import (
     format_file_size,
 )
 from core.inventory import build_storage_inventory
-from core.scans import (
-    find_scan_provider,
-    get_part_number,
-    get_scan_group_key,
-)
+from core.scan_sync import sync_scans
 from core.storage import is_mounted, mount_cifs
 from core.sync import sync_transcriptions
 
@@ -138,7 +132,6 @@ def main():
     existing_scans_by_url = inventory.existing_scans_by_url
     next_number = inventory.next_number
 
-    downloaded_scan_packages = 0
     transcription_result = sync_transcriptions(
         selected,
         base_dir,
@@ -147,117 +140,16 @@ def main():
     )
     target_folders = transcription_result.target_folders
     
-    print("\nKontrola skanów:")
-    
-    selected_scan_groups = {}
-    
-    for api_file in selected["files"]:
-        group_key = get_scan_group_key(api_file["name"])
-    
-        selected_scan_groups.setdefault(
-            group_key,
-            [],
-        ).append(api_file)
-    
-    for group_key, group_files in selected_scan_groups.items():
-        normalized_urls = scan_urls_by_group.get(
-            group_key,
-            set(),
-        )
-    
-        print(f"\nGRUPA: {group_key}")
-    
-        if not normalized_urls:
-            print("BRAK URL-scan — pomijam")
-            continue
-    
-        if len(normalized_urls) > 1:
-            print("NIEJEDNOZNACZNY URL-scan:")
-    
-            for normalized_url in sorted(normalized_urls):
-                print(f"  {normalized_url}")
-    
-            print("POMIJAM — wymaga ręcznego sprawdzenia")
-            continue
-    
-        normalized_url = next(iter(normalized_urls))
-        source = scan_sources_by_url[normalized_url]
-        existing_locations = existing_scans_by_url.get(
-            normalized_url,
-            {},
-        )
-    
-        if existing_locations:
-            print("SKANY JUŻ ISTNIEJĄ:")
-    
-            for folder, score_files in sorted(
-                existing_locations.items(),
-                key=lambda item: item[0].name,
-            ):
-                print(f"  FOLDER: {folder.name}")
-                print(f"  LICZBA PLIKÓW: {len(score_files)}")
-    
-            continue
-    
-        primary_file = min(
-            group_files,
-            key=lambda api_file: (
-                get_part_number(api_file["name"]),
-                api_file["name"],
-            ),
-        )
-        destination_folder = target_folders[primary_file["name"]]
-    
-        print("BRAK SKANÓW")
-        print(f"FOLDER DOCELOWY: {destination_folder.name}")
-        print(f"URL-scan: {source['url']}")
-    
-        provider = find_scan_provider(source["url"])
-    
-        if provider is None:
-            print("BRAK OBSŁUGI AUTOMATYCZNEGO POBIERANIA DLA TEJ BIBLIOTEKI")
-            continue
-    
-        try:
-            download_info = provider.get_download_info(
-                session,
-                source["url"],
-            )
-        except requests.RequestException as error:
-            print(f"NIE UDAŁO SIĘ POBRAĆ INFORMACJI O PAKIECIE: {error}")
-            continue
-        except ValueError as error:
-            print(f"NIEPRAWIDŁOWY URL-scan: {error}")
-            continue
-    
-        print(f"PAKIET: {download_info.filename}")
-        print(f"FORMAT: {download_info.content_type or 'nieznany'}")
-        print(f"ROZMIAR: {format_file_size(download_info.size)}")
-    
-        if not ask_yes_no("Pobrać teraz?"):
-            print("POMIJAM POBIERANIE")
-            continue
-    
-        try:
-            scans_folder = provider.download_and_extract(
-                session,
-                download_info,
-                destination_folder,
-                show_download_progress,
-            )
-        except (
-            requests.RequestException,
-            OSError,
-            ValueError,
-        ) as error:
-            print()
-            print(f"NIE UDAŁO SIĘ POBRAĆ SKANÓW: {error}")
-            continue
-    
-        downloaded_scan_packages += 1
-    
-        print()
-        print(f"ZAPISANO SKANY: {scans_folder}")
+    scan_result = sync_scans(
+        selected,
+        scan_urls_by_group,
+        scan_sources_by_url,
+        existing_scans_by_url,
+        target_folders,
+        session,
+        should_download=lambda request: ask_yes_no("Pobrać teraz?"),
+        progress_callback=show_download_progress,
+    )
     
     
     print("\n" + "─" * 32)
@@ -270,7 +162,10 @@ def main():
         "Pobrano transkrypcji:        "
         f"{transcription_result.downloaded_count}"
     )
-    print(f"Pobrano pakietów skanów:     {downloaded_scan_packages}")
+    print(
+        "Pobrano pakietów skanów:     "
+        f"{scan_result.downloaded_packages}"
+    )
     print(
         "Pominięto transkrypcji:      "
         f"{transcription_result.skipped_count}"
