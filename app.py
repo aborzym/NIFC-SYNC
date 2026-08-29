@@ -13,6 +13,7 @@ def main():
     window = MainWindow()
     window.show_ready_message()
     window.show()
+    window.load_catalog()
 
     return application.exec()
 
