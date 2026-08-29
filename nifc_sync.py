@@ -1,5 +1,4 @@
 import base64
-import re
 from pathlib import Path
 
 import requests
@@ -10,13 +9,12 @@ from core.catalog import (
     get_available_workflows,
 )
 from core.filesystem import (
-    find_existing_scores,
     find_existing_transcriptions,
     format_file_size,
 )
+from core.inventory import build_storage_inventory
 from core.scans import (
     find_scan_provider,
-    folder_matches_scan_group,
     get_part_number,
     get_scan_group_key,
 )
@@ -133,51 +131,15 @@ def main():
     
     print("✓ Folder z Maca jest dostępny.")
     
-    folder_names = [p.name for p in base_dir.iterdir() if p.is_dir()]
-    
-    scan_folders_by_url = {}
-    
-    for folder_name in folder_names:
-        for group_key, normalized_urls in scan_urls_by_group.items():
-            if not folder_matches_scan_group(
-                folder_name,
-                group_key,
-            ):
-                continue
-    
-            for normalized_url in normalized_urls:
-                scan_folders_by_url.setdefault(
-                    normalized_url,
-                    set(),
-                ).add(base_dir / folder_name)
-    
-    existing_scans_by_url = {}
-    
-    for normalized_url, folders in scan_folders_by_url.items():
-        for folder in folders:
-            existing_scores = find_existing_scores(folder)
-    
-            if not existing_scores:
-                continue
-    
-            existing_scans_by_url.setdefault(
-                normalized_url,
-                {},
-            )[folder] = existing_scores
-    
-    
+    inventory = build_storage_inventory(
+        base_dir,
+        scan_urls_by_group,
+    )
+    folder_names = inventory.folder_names
+    existing_scans_by_url = inventory.existing_scans_by_url
+    next_number = inventory.next_number
+
     missing = []
-    
-    number_pattern = re.compile(r"(?<!\d)(\d{3})\s*-\s*")
-    
-    numbers = []
-    
-    for folder in folder_names:
-        match = number_pattern.search(folder)
-        if match:
-            numbers.append(int(match.group(1)))
-    
-    next_number = max(numbers, default=0) + 1
     
     workflow_codes = {
         "XML": "XML",
