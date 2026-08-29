@@ -6,6 +6,7 @@ from pathlib import Path
 
 import requests
 
+from core.client import NifcClient, load_credentials
 from core.filesystem import (
     find_existing_scores,
     find_existing_transcriptions,
@@ -55,27 +56,16 @@ def show_download_progress(
     )
 
 
-session = requests.Session()
-
 credentials_file = Path.home() / ".nifccredentials"
-
-credentials = {}
-
-with credentials_file.open() as f:
-    for line in f:
-        key, value = line.strip().split("=", 1)
-        credentials[key] = value
+credentials = load_credentials(credentials_file)
 
 login = credentials["login"]
 password = credentials["password"]
 
-response = session.post(
-    "http://transkrypcje.nifc.pl/api/user/login",
-    json={
-        "login": login,
-        "password": password,
-    },
-)
+client = NifcClient()
+session = client.session
+
+response = client.login(login, password)
 
 if response.ok:
     user = response.json()
@@ -85,7 +75,7 @@ else:
     raise SystemExit
 
 
-files_response = session.get("http://transkrypcje.nifc.pl/api/files")
+files_response = client.get_files()
 
 if not files_response.ok:
     print(f"\n✗ Nie udało się pobrać plików z NIFC. Kod: {files_response.status_code}")
