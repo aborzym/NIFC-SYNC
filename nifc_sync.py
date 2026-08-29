@@ -5,18 +5,20 @@ from pathlib import Path
 import requests
 
 from core.client import NifcClient, load_credentials
+from core.catalog import (
+    build_scan_indexes,
+    get_available_workflows,
+)
 from core.filesystem import (
     find_existing_scores,
     find_existing_transcriptions,
     format_file_size,
 )
 from core.scans import (
-    extract_scan_url,
     find_scan_provider,
     folder_matches_scan_group,
     get_part_number,
     get_scan_group_key,
-    normalize_scan_url,
 )
 from core.storage import is_mounted, mount_cifs
 
@@ -86,43 +88,10 @@ def main():
     data = files_response.json()
     
     
-    allowed_workflows = [
-        "XML",
-        "KRN-diplomatic",
-        "KRN-modern",
-    ]
-    
-    available_workflows = [
-        workflow for workflow in data["workflows"] if workflow["name"] in allowed_workflows
-    ]
-    
-    scan_urls_by_group = {}
-    scan_sources_by_url = {}
-    
-    for workflow in available_workflows:
-        for api_file in workflow["files"]:
-            scan_url = extract_scan_url(api_file)
-    
-            if not scan_url:
-                continue
-    
-            group_key = get_scan_group_key(api_file["name"])
-            normalized_url = normalize_scan_url(scan_url)
-    
-            scan_urls_by_group.setdefault(
-                group_key,
-                set(),
-            ).add(normalized_url)
-    
-            source = scan_sources_by_url.setdefault(
-                normalized_url,
-                {
-                    "url": scan_url,
-                    "groups": set(),
-                },
-            )
-    
-            source["groups"].add(group_key)
+    available_workflows = get_available_workflows(data)
+    scan_urls_by_group, scan_sources_by_url = build_scan_indexes(
+        available_workflows
+    )
     
     print("\nWybierz workflow:")
     
