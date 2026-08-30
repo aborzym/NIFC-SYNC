@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QThread, Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -97,10 +98,22 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout()
         layout.setSpacing(12)
 
-        self.brand_mark = QLabel("↻")
+        self.brand_mark = QLabel()
         self.brand_mark.setObjectName("brandMark")
         self.brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.brand_mark.setFixedSize(42, 42)
+        icon_path = (
+            Path(__file__).resolve().parent.parent
+            / "assets"
+            / "sync.svg"
+        )
+        icon = QPixmap(str(icon_path)).scaled(
+            24,
+            24,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.brand_mark.setPixmap(icon)
 
         title_layout = QVBoxLayout()
         title_layout.setSpacing(2)
@@ -168,10 +181,7 @@ class MainWindow(QMainWindow):
             self.destination_edit.setText(selected_directory)
 
     def show_ready_message(self):
-        self.log_view.append(
-            "Interfejs uruchomiony. Silnik synchronizacji "
-            "nie jest jeszcze podłączony."
-        )
+        self.log_view.append("Interfejs uruchomiony.")
 
     def load_catalog(self):
         self.statusBar().showMessage("Łączenie z NIFC…")
