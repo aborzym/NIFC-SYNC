@@ -290,11 +290,8 @@ class MainWindow(QMainWindow):
 
         self.sync_thread.start()
 
-    def _update_progress(self, downloaded_size, total_size):
-        if total_size:
-            percentage = round(
-                downloaded_size / total_size * 100
-            )
+    def _update_progress(self, percentage):
+        if percentage >= 0:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(percentage)
         else:
