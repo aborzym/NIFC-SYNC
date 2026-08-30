@@ -14,9 +14,11 @@ from core.scans import (
 @dataclass(frozen=True)
 class ScanDownloadRequest:
     group_key: str
+    transcription_name: str
     source_url: str
     destination_folder: Path
     download_info: object
+    provider: object
 
 
 @dataclass(frozen=True)
@@ -24,18 +26,16 @@ class ScanSyncResult:
     downloaded_packages: int
 
 
-def sync_scans(
+def plan_scans(
     selected_workflow,
     scan_urls_by_group,
     scan_sources_by_url,
     existing_scans_by_url,
     target_folders,
     session,
-    should_download,
-    progress_callback=None,
     log=print,
 ):
-    downloaded_packages = 0
+    plans = []
     selected_scan_groups = {}
 
     log("\nKontrola skanów:")
@@ -128,21 +128,48 @@ def sync_scans(
 
         request = ScanDownloadRequest(
             group_key=group_key,
+            transcription_name=primary_file["name"],
             source_url=source["url"],
             destination_folder=destination_folder,
             download_info=download_info,
+            provider=provider,
         )
 
-        if not should_download(request):
-            log("POMIJAM POBIERANIE")
-            continue
+        plans.append(request)
+
+    return tuple(plans)
+
+
+def download_scan_plans(
+    session,
+    plans,
+    progress_callback=None,
+    log=print,
+):
+    downloaded_packages = 0
+
+    for request in plans:
+        log(f"\nPOBIERANIE: {request.download_info.filename}")
+
+        if progress_callback:
+            provider_progress = (
+                lambda downloaded, total, request=request: (
+                    progress_callback(
+                        request,
+                        downloaded,
+                        total,
+                    )
+                )
+            )
+        else:
+            provider_progress = None
 
         try:
-            scans_folder = provider.download_and_extract(
+            scans_folder = request.provider.download_and_extract(
                 session,
-                download_info,
-                destination_folder,
-                progress_callback,
+                request.download_info,
+                request.destination_folder,
+                provider_progress,
             )
         except (
             requests.RequestException,
@@ -160,4 +187,50 @@ def sync_scans(
 
     return ScanSyncResult(
         downloaded_packages=downloaded_packages,
+    )
+
+
+def sync_scans(
+    selected_workflow,
+    scan_urls_by_group,
+    scan_sources_by_url,
+    existing_scans_by_url,
+    target_folders,
+    session,
+    should_download,
+    progress_callback=None,
+    log=print,
+):
+    plans = plan_scans(
+        selected_workflow,
+        scan_urls_by_group,
+        scan_sources_by_url,
+        existing_scans_by_url,
+        target_folders,
+        session,
+        log=log,
+    )
+    selected_plans = []
+
+    for request in plans:
+        if should_download(request):
+            selected_plans.append(request)
+        else:
+            log("POMIJAM POBIERANIE")
+
+    if progress_callback:
+        adapted_progress = (
+            lambda request, downloaded, total: progress_callback(
+                downloaded,
+                total,
+            )
+        )
+    else:
+        adapted_progress = None
+
+    return download_scan_plans(
+        session,
+        selected_plans,
+        progress_callback=adapted_progress,
+        log=log,
     )
