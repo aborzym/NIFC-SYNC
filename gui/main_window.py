@@ -108,8 +108,8 @@ class MainWindow(QMainWindow):
             / "sync.svg"
         )
         icon = QPixmap(str(icon_path)).scaled(
-            24,
-            24,
+            26,
+            26,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
