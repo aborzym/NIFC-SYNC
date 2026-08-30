@@ -11,13 +11,22 @@ class CleanupResult:
 
 def cleanup_scan_staging_folders(
     base_dir,
+    project_folders=None,
     log=print,
 ):
     base_dir = Path(base_dir)
     removed = []
     failures = []
 
-    for project_folder in base_dir.iterdir():
+    if project_folders is None:
+        folders_to_check = base_dir.iterdir()
+    else:
+        folders_to_check = (
+            Path(folder)
+            for folder in project_folders
+        )
+
+    for project_folder in folders_to_check:
         if not project_folder.is_dir():
             continue
 

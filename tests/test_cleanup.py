@@ -39,6 +39,27 @@ class CleanupScanStagingFoldersTests(unittest.TestCase):
 
             self.assertTrue(scan_path.exists())
 
+    def test_checks_only_selected_project_folders(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            base_dir = Path(temporary_directory)
+            selected_project = base_dir / "001 - D - selected"
+            other_project = base_dir / "002 - D - other"
+            selected_staging = (
+                selected_project / ".skany_tmp_selected"
+            )
+            other_staging = other_project / ".skany_tmp_other"
+            selected_staging.mkdir(parents=True)
+            other_staging.mkdir(parents=True)
+
+            cleanup_scan_staging_folders(
+                base_dir,
+                project_folders={selected_project},
+                log=lambda message: None,
+            )
+
+            self.assertFalse(selected_staging.exists())
+            self.assertTrue(other_staging.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

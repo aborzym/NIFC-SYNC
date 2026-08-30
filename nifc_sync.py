@@ -125,8 +125,6 @@ def main():
     
     print("✓ Folder z Maca jest dostępny.")
 
-    cleanup_scan_staging_folders(base_dir)
-    
     inventory = build_storage_inventory(
         base_dir,
         scan_urls_by_group,
@@ -142,6 +140,11 @@ def main():
         next_number,
     )
     target_folders = transcription_result.target_folders
+
+    cleanup_scan_staging_folders(
+        base_dir,
+        project_folders=set(target_folders.values()),
+    )
     
     scan_result = sync_scans(
         selected,
