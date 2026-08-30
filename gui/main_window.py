@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QThread
+from PySide6.QtCore import QSettings, QThread, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -38,23 +38,12 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(18)
 
-        title = QLabel("NIFC-SYNC")
-        title_font = title.font()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        title.setFont(title_font)
-
-        subtitle = QLabel(
-            "Synchronizacja transkrypcji i skanów źródłowych"
-        )
-        subtitle.setObjectName("subtitle")
-
-        main_layout.addWidget(title)
-        main_layout.addWidget(subtitle)
+        main_layout.addLayout(self._create_header())
         main_layout.addWidget(self._create_workflow_group())
         main_layout.addWidget(self._create_destination_group())
 
         self.sync_button = QPushButton("Synchronizuj")
+        self.sync_button.setObjectName("primaryButton")
         self.sync_button.setEnabled(False)
         self.sync_button.setMinimumHeight(42)
         self.sync_button.clicked.connect(
@@ -74,14 +63,20 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setTextVisible(False)
         main_layout.addWidget(self.progress_bar)
 
         log_label = QLabel("Dziennik")
         log_label_font = log_label.font()
         log_label_font.setBold(True)
         log_label.setFont(log_label_font)
-        main_layout.addWidget(log_label)
+        log_header = QHBoxLayout()
+        log_header.addWidget(log_label)
+        log_header.addStretch()
+        self.progress_stage_label = QLabel("Gotowy")
+        self.progress_stage_label.setObjectName("progressStage")
+        log_header.addWidget(self.progress_stage_label)
+        main_layout.addLayout(log_header)
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
@@ -97,6 +92,37 @@ class MainWindow(QMainWindow):
         self.destination_edit.textChanged.connect(
             self._update_sync_button
         )
+
+    def _create_header(self):
+        layout = QHBoxLayout()
+        layout.setSpacing(12)
+
+        self.brand_mark = QLabel("↻")
+        self.brand_mark.setObjectName("brandMark")
+        self.brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_mark.setFixedSize(42, 42)
+
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+        title = QLabel("NIFC-SYNC")
+        title.setObjectName("title")
+        subtitle = QLabel(
+            "Synchronizacja transkrypcji i skanów źródłowych"
+        )
+        subtitle.setObjectName("subtitle")
+        title_layout.addWidget(title)
+        title_layout.addWidget(subtitle)
+
+        self.connection_label = QLabel("Łączenie z NIFC…")
+        self.connection_label.setObjectName("connectionStatus")
+        self.connection_label.setProperty("connected", False)
+
+        layout.addWidget(self.brand_mark)
+        layout.addLayout(title_layout)
+        layout.addStretch()
+        layout.addWidget(self.connection_label)
+
+        return layout
 
     def _create_workflow_group(self):
         group = QGroupBox("Rodzaj transkrypcji")
@@ -208,11 +234,21 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Połączono jako: {user_name}"
         )
+        self.connection_label.setText("●  Połączono z NIFC")
+        self.connection_label.setProperty("connected", True)
+        self.connection_label.style().unpolish(
+            self.connection_label
+        )
+        self.connection_label.style().polish(
+            self.connection_label
+        )
         self._update_sync_button()
 
     def _catalog_failed(self, message):
         self.log_view.append(f"BŁĄD: {message}")
         self.statusBar().showMessage("Błąd połączenia")
+        self.connection_label.setText("●  Brak połączenia")
+        self.connection_label.setProperty("connected", False)
 
     def _catalog_thread_finished(self):
         self.catalog_thread = None
@@ -260,6 +296,7 @@ class MainWindow(QMainWindow):
             f"Synchronizacja: {selected_workflow['name']}"
         )
         self.statusBar().showMessage("Synchronizacja…")
+        self.progress_stage_label.setText("Przygotowanie… 0%")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self._set_controls_enabled(False)
@@ -303,8 +340,12 @@ class MainWindow(QMainWindow):
         if percentage >= 0:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(percentage)
+            self.progress_stage_label.setText(
+                f"Synchronizacja… {percentage}%"
+            )
         else:
             self.progress_bar.setRange(0, 0)
+            self.progress_stage_label.setText("Pobieranie skanów…")
 
     def _synchronization_completed(self, summary):
         self.progress_bar.setRange(0, 100)
@@ -324,12 +365,14 @@ class MainWindow(QMainWindow):
             f"Pominięto transkrypcji: {summary['skipped']}"
         )
         self.statusBar().showMessage("Gotowe")
+        self.progress_stage_label.setText("Gotowe — 100%")
 
     def _synchronization_failed(self, message):
         self.log_view.append(f"\nBŁĄD: {message}")
         self.statusBar().showMessage("Błąd synchronizacji")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_stage_label.setText("Błąd")
 
     def _sync_thread_finished(self):
         self.sync_thread = None
