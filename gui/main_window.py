@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QSettings, QThread
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QProgressBar,
     QRadioButton,
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.statusBar().showMessage("Gotowy")
 
+        self._restore_settings()
         self.destination_edit.textChanged.connect(
             self._update_sync_button
         )
@@ -237,6 +239,13 @@ class MainWindow(QMainWindow):
 
         return self.workflows.get(workflow_name)
 
+    def _selected_workflow_name(self):
+        if self.modern_radio.isChecked():
+            return "KRN-modern"
+        if self.xml_radio.isChecked():
+            return "XML"
+        return "KRN-diplomatic"
+
     def _start_synchronization(self):
         selected_workflow = self._selected_workflow()
 
@@ -336,3 +345,75 @@ class MainWindow(QMainWindow):
         self.browse_button.setEnabled(enabled)
         self.download_scans_checkbox.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
+
+    def _restore_settings(self):
+        settings = QSettings()
+
+        geometry = settings.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        destination = settings.value("sync/destination")
+        if destination:
+            self.destination_edit.setText(destination)
+
+        self.download_scans_checkbox.setChecked(
+            settings.value(
+                "sync/download_scans",
+                False,
+                type=bool,
+            )
+        )
+
+        workflow_name = settings.value(
+            "sync/workflow",
+            "KRN-diplomatic",
+        )
+        radio_buttons = {
+            "KRN-diplomatic": self.diplomatic_radio,
+            "KRN-modern": self.modern_radio,
+            "XML": self.xml_radio,
+        }
+        radio_buttons.get(
+            workflow_name,
+            self.diplomatic_radio,
+        ).setChecked(True)
+
+    def _save_settings(self):
+        settings = QSettings()
+        settings.setValue("window/geometry", self.saveGeometry())
+        settings.setValue(
+            "sync/destination",
+            self.destination_edit.text().strip(),
+        )
+        settings.setValue(
+            "sync/download_scans",
+            self.download_scans_checkbox.isChecked(),
+        )
+        settings.setValue(
+            "sync/workflow",
+            self._selected_workflow_name(),
+        )
+
+    def closeEvent(self, event):
+        threads = (
+            self.catalog_thread,
+            self.sync_thread,
+        )
+        is_busy = any(
+            thread is not None and thread.isRunning()
+            for thread in threads
+        )
+
+        if is_busy:
+            QMessageBox.warning(
+                self,
+                "NIFC-SYNC pracuje",
+                "Poczekaj na zakończenie bieżącej operacji "
+                "przed zamknięciem aplikacji.",
+            )
+            event.ignore()
+            return
+
+        self._save_settings()
+        event.accept()
