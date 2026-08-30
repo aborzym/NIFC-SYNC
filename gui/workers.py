@@ -59,11 +59,12 @@ class CatalogLoader(QObject):
 
             if not workflows:
                 raise RuntimeError(
-                    "NIFC nie zwrócił obsługiwanych workflowów."
+                    "NIFC nie zwrócił dostępnych rodzajów "
+                    "transkrypcji."
                 )
 
             self.loaded.emit(workflows, user_name)
-            self.log.emit("Pobrano listę workflowów.")
+            self.log.emit("Pobrano dane z NIFC.")
 
         except (
             OSError,
@@ -138,7 +139,8 @@ class SyncWorker(QObject):
             self.progress.emit(65)
 
             self.log.emit(
-                "Sprzątanie pozostałości dla wybranego workflow…"
+                "Sprzątanie pozostałości dla wybranego rodzaju "
+                "transkrypcji…"
             )
             cleanup_scan_staging_folders(
                 self.destination,
