@@ -3,14 +3,18 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from gui.main_window import MainWindow
+from gui.theme import STYLESHEET, apply_widget_shadows
 
 
 def main():
     application = QApplication(sys.argv)
     application.setApplicationName("NIFC-SYNC")
     application.setOrganizationName("NIFC-SYNC")
+    application.setStyle("Fusion")
+    application.setStyleSheet(STYLESHEET)
 
     window = MainWindow()
+    apply_widget_shadows(window)
     window.show_ready_message()
     window.show()
     window.load_catalog()
