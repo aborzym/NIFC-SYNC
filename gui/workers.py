@@ -112,21 +112,14 @@ class SyncWorker(QObject):
                 f"Katalog docelowy: {self.destination}"
             )
 
-            self.log.emit("Sprzątanie pozostałości po pobieraniu…")
-            self.progress.emit(10)
-            cleanup_scan_staging_folders(
-                self.destination,
-                log=self.log.emit,
-            )
-
             self.log.emit("Analiza danych z NIFC…")
-            self.progress.emit(20)
+            self.progress.emit(10)
             scan_urls_by_group, scan_sources_by_url = (
                 build_scan_indexes(self.available_workflows)
             )
 
             self.log.emit("Inwentaryzacja katalogu docelowego…")
-            self.progress.emit(25)
+            self.progress.emit(20)
             inventory = build_storage_inventory(
                 self.destination,
                 scan_urls_by_group,
@@ -140,6 +133,18 @@ class SyncWorker(QObject):
                 self.destination,
                 inventory.folder_names,
                 inventory.next_number,
+                log=self.log.emit,
+            )
+            self.progress.emit(65)
+
+            self.log.emit(
+                "Sprzątanie pozostałości dla wybranego workflow…"
+            )
+            cleanup_scan_staging_folders(
+                self.destination,
+                project_folders=set(
+                    transcription_result.target_folders.values()
+                ),
                 log=self.log.emit,
             )
             self.progress.emit(70)
