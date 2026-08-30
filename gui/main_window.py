@@ -97,7 +97,7 @@ class MainWindow(QMainWindow):
         )
 
     def _create_workflow_group(self):
-        group = QGroupBox("Workflow")
+        group = QGroupBox("Rodzaj transkrypcji")
         layout = QHBoxLayout(group)
 
         self.diplomatic_radio = QRadioButton("KRN diplomatic")
@@ -242,7 +242,7 @@ class MainWindow(QMainWindow):
 
         if selected_workflow is None:
             self._catalog_failed(
-                "Nie wybrano dostępnego workflow."
+                "Nie wybrano rodzaju transkrypcji."
             )
             return
 
