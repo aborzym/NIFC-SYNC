@@ -79,7 +79,7 @@ class CatalogLoader(QObject):
 
 class SyncWorker(QObject):
     log = Signal(str)
-    progress = Signal(int, object)
+    progress = Signal(int)
     completed = Signal(object)
     failed = Signal(str)
     finished = Signal()
@@ -100,6 +100,8 @@ class SyncWorker(QObject):
     @Slot()
     def run(self):
         try:
+            self.progress.emit(5)
+
             if not self.destination.is_dir():
                 raise RuntimeError(
                     "Katalog docelowy nie jest dostępny: "
@@ -110,19 +112,29 @@ class SyncWorker(QObject):
                 f"Katalog docelowy: {self.destination}"
             )
 
+            self.log.emit("Sprzątanie pozostałości po pobieraniu…")
+            self.progress.emit(10)
             cleanup_scan_staging_folders(
                 self.destination,
                 log=self.log.emit,
             )
 
+            self.log.emit("Analiza danych z NIFC…")
+            self.progress.emit(20)
             scan_urls_by_group, scan_sources_by_url = (
                 build_scan_indexes(self.available_workflows)
             )
+
+            self.log.emit("Inwentaryzacja katalogu docelowego…")
+            self.progress.emit(25)
             inventory = build_storage_inventory(
                 self.destination,
                 scan_urls_by_group,
             )
+            self.progress.emit(40)
 
+            self.log.emit("Synchronizacja transkrypcji…")
+            self.progress.emit(45)
             transcription_result = sync_transcriptions(
                 self.selected_workflow,
                 self.destination,
@@ -130,7 +142,10 @@ class SyncWorker(QObject):
                 inventory.next_number,
                 log=self.log.emit,
             )
+            self.progress.emit(70)
 
+            self.log.emit("Kontrola skanów…")
+            self.progress.emit(75)
             session = requests.Session()
             scan_result = sync_scans(
                 self.selected_workflow,
@@ -142,9 +157,10 @@ class SyncWorker(QObject):
                 should_download=(
                     lambda request: self.download_scans
                 ),
-                progress_callback=self.progress.emit,
+                progress_callback=self._scan_download_progress,
                 log=self.log.emit,
             )
+            self.progress.emit(95)
 
             self.completed.emit(
                 {
@@ -161,3 +177,14 @@ class SyncWorker(QObject):
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
+
+    def _scan_download_progress(
+        self,
+        downloaded_size,
+        total_size,
+    ):
+        if total_size:
+            fraction = min(downloaded_size / total_size, 1)
+            self.progress.emit(75 + round(fraction * 20))
+        else:
+            self.progress.emit(-1)
