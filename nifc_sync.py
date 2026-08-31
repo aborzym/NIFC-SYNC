@@ -349,14 +349,23 @@ if not os.path.ismount(base_dir):
 
 print("✓ Folder z Maca jest dostępny.")
 
-folder_names = [p.name for p in base_dir.iterdir() if p.is_dir()]
+archive_dir = base_dir / "wyslane"
+
+folder_paths = [
+    path for path in base_dir.iterdir() if path.is_dir() and path != archive_dir
+]
+
+if archive_dir.is_dir():
+    folder_paths.extend(path for path in archive_dir.iterdir() if path.is_dir())
+
+folder_paths.sort(key=lambda path: path.name.lower())
 
 scan_folders_by_url = {}
 
-for folder_name in folder_names:
+for folder in folder_paths:
     for group_key, normalized_urls in scan_urls_by_group.items():
         if not folder_matches_scan_group(
-            folder_name,
+            folder.name,
             group_key,
         ):
             continue
@@ -365,8 +374,7 @@ for folder_name in folder_names:
             scan_folders_by_url.setdefault(
                 normalized_url,
                 set(),
-            ).add(base_dir / folder_name)
-
+            ).add(folder)
 existing_scans_by_url = {}
 
 for normalized_url, folders in scan_folders_by_url.items():
@@ -388,8 +396,9 @@ number_pattern = re.compile(r"(?<!\d)(\d{3})\s*-\s*")
 
 numbers = []
 
-for folder in folder_names:
-    match = number_pattern.search(folder)
+for folder in folder_paths:
+    match = number_pattern.search(folder.name)
+
     if match:
         numbers.append(int(match.group(1)))
 
@@ -416,16 +425,18 @@ for file in selected["files"]:
     api_name = file["name"]
     api_stem = Path(api_name).stem
 
-    match = next((folder for folder in folder_names if api_stem in folder), None)
+    match = next(
+        (folder for folder in folder_paths if api_stem in folder.name),
+        None,
+    )
 
     if match:
+        relative_folder = match.relative_to(base_dir)
+
         print(f"ISTNIEJE: {api_name}")
-        print(f"        -> {match}")
+        print(f"        -> {relative_folder}")
 
-        existing_folder = base_dir / match
-
-        target_folder = existing_folder
-
+        target_folder = match
         existing_transcriptions = find_existing_transcriptions(
             target_folder,
             selected["name"],
