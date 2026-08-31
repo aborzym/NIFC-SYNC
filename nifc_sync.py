@@ -1,7 +1,6 @@
 import base64
 import os
 import re
-import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -326,28 +325,10 @@ for file in selected["files"]:
     print(file["name"])
 
 
-base_dir = Path.home() / "mac_transkrypcje"
+base_dir = Path.home() / "Documents" / "TRANSKRYPCJE 2026"
 
-if not os.path.ismount(base_dir):
-    print("\nMac nie jest zamontowany. Próbuję połączyć...")
+print("✓ Folder transkrypcji jest dostępny.")
 
-    result = subprocess.run(
-        [
-            "sudo",
-            "mount.cifs",
-            "//Mac-Studio-Andrzej.local/TRANSKRYPCJE 2026",
-            str(base_dir),
-            "-o",
-            f"credentials={Path.home() / '.smbcredentials'},vers=3.0,uid={os.getuid()},gid={os.getgid()}",
-        ],
-        check=False,
-    )
-
-    if result.returncode != 0:
-        print("✗ Nie udało się zamontować folderu z Maca.")
-        raise SystemExit
-
-print("✓ Folder z Maca jest dostępny.")
 
 archive_dir = base_dir / "wyslane"
 
