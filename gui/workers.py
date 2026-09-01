@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import requests
 from PySide6.QtCore import QObject, Signal, Slot
@@ -9,8 +10,9 @@ from core.catalog import (
 )
 from core.client import NifcClient, load_credentials
 from core.cleanup import cleanup_scan_staging_folders
+from core.filesystem import format_file_size
 from core.inventory import build_storage_inventory
-from core.scan_sync import sync_scans
+from core.scan_sync import download_scan_plans, plan_scans
 from core.sync import sync_transcriptions
 
 
@@ -43,8 +45,8 @@ class CatalogLoader(QObject):
 
             user = login_response.json()
             user_name = user.get("name", credentials["login"])
-            self.log.emit(f"Zalogowano jako: {user_name}")
 
+            self.log.emit("Pobieranie danych…")
             files_response = client.get_files()
 
             if not files_response.ok:
@@ -81,7 +83,7 @@ class CatalogLoader(QObject):
 class SyncWorker(QObject):
     log = Signal(str)
     progress = Signal(int)
-    completed = Signal(object)
+    completed = Signal(object, object)
     failed = Signal(str)
     finished = Signal()
 
@@ -90,18 +92,19 @@ class SyncWorker(QObject):
         selected_workflow,
         available_workflows,
         destination,
-        download_scans,
     ):
         super().__init__()
         self.selected_workflow = selected_workflow
         self.available_workflows = available_workflows
         self.destination = Path(destination)
-        self.download_scans = download_scans
 
     @Slot()
     def run(self):
         try:
             self.progress.emit(5)
+
+            self.log.emit("Sprawdzanie katalogu docelowego…")
+            self._check_destination_access()
 
             if not self.destination.is_dir():
                 raise RuntimeError(
@@ -154,20 +157,16 @@ class SyncWorker(QObject):
             self.log.emit("Kontrola skanów…")
             self.progress.emit(75)
             session = requests.Session()
-            scan_result = sync_scans(
+            scan_plans = plan_scans(
                 self.selected_workflow,
                 scan_urls_by_group,
                 scan_sources_by_url,
                 inventory.existing_scans_by_url,
                 transcription_result.target_folders,
                 session,
-                should_download=(
-                    lambda request: self.download_scans
-                ),
-                progress_callback=self._scan_download_progress,
                 log=self.log.emit,
             )
-            self.progress.emit(95)
+            self.progress.emit(80)
 
             self.completed.emit(
                 {
@@ -176,8 +175,9 @@ class SyncWorker(QObject):
                         transcription_result.downloaded_count
                     ),
                     "skipped": transcription_result.skipped_count,
-                    "scan_packages": scan_result.downloaded_packages,
-                }
+                    "scan_packages": 0,
+                },
+                scan_plans,
             )
 
         except Exception as error:
@@ -185,13 +185,84 @@ class SyncWorker(QObject):
         finally:
             self.finished.emit()
 
-    def _scan_download_progress(
-        self,
-        downloaded_size,
-        total_size,
-    ):
-        if total_size:
-            fraction = min(downloaded_size / total_size, 1)
-            self.progress.emit(75 + round(fraction * 20))
+    def _check_destination_access(self):
+        try:
+            result = subprocess.run(
+                ["ls", "-A", str(self.destination)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=12,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                "Katalog docelowy nie odpowiada. "
+                "Mac lub udział sieciowy może być uśpiony albo "
+                "niedostępny. Obudź Maca i spróbuj ponownie."
+            ) from error
+
+        if result.returncode != 0:
+            detail = result.stderr.strip()
+            message = "Nie można odczytać katalogu docelowego"
+            if detail:
+                message += f": {detail}"
+            raise RuntimeError(message)
+
+
+
+class ScanDownloadWorker(QObject):
+    log = Signal(str)
+    progress = Signal(int, str)
+    completed = Signal(int)
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, plans):
+        super().__init__()
+        self.plans = tuple(plans)
+
+    @Slot()
+    def run(self):
+        try:
+            session = requests.Session()
+            result = download_scan_plans(
+                session,
+                self.plans,
+                progress_callback=self._download_progress,
+                log=self.log.emit,
+            )
+            self.completed.emit(result.downloaded_packages)
+        except Exception as error:
+            self.failed.emit(str(error))
+        finally:
+            self.finished.emit()
+
+    def _download_progress(self, request, downloaded, total):
+        package_index = self.plans.index(request)
+        if total:
+            package_fraction = min(downloaded / total, 1)
         else:
-            self.progress.emit(-1)
+            package_fraction = 0
+        overall_fraction = (
+            package_index + package_fraction
+        ) / len(self.plans)
+        known_total = sum(
+            plan.download_info.size or 0 for plan in self.plans
+        )
+        completed_size = sum(
+            plan.download_info.size or 0
+            for plan in self.plans[:package_index]
+        )
+        downloaded_size = completed_size + downloaded
+        if known_total:
+            detail = (
+                f"Pobrano {format_file_size(downloaded_size)} "
+                f"z {format_file_size(known_total)}"
+            )
+        else:
+            detail = f"Pobrano {format_file_size(downloaded)}"
+        self.progress.emit(
+            80 + round(overall_fraction * 19),
+            detail,
+        )

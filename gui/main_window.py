@@ -1,14 +1,16 @@
 from pathlib import Path
 
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QSettings, QThread, QTimer, Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
-    QCheckBox,
+    QDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QProgressBar,
     QRadioButton,
@@ -17,7 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.workers import CatalogLoader, SyncWorker
+from gui.scan_dialog import ScanSelectionDialog
+from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
 
 
 class MainWindow(QMainWindow):
@@ -31,56 +34,71 @@ class MainWindow(QMainWindow):
         self.catalog_worker = None
         self.sync_thread = None
         self.sync_worker = None
+        self.scan_thread = None
+        self.scan_worker = None
+        self.pending_summary = None
+        self.pending_scan_plans = ()
+        self.activity_frame = 0
+        self.activity_colors = (
+            "#315fb9",
+            "#3d6fc8",
+            "#4b80d8",
+            "#5e91e5",
+            "#73a2ef",
+            "#8fb7ff",
+            "#73a2ef",
+            "#5e91e5",
+            "#4b80d8",
+            "#3d6fc8",
+        )
+        self.activity_timer = QTimer(self)
+        self.activity_timer.setInterval(110)
+        self.activity_timer.timeout.connect(
+            self._animate_activity_indicator
+        )
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(18)
 
-        title = QLabel("NIFC-SYNC")
-        title_font = title.font()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        title.setFont(title_font)
-
-        subtitle = QLabel(
-            "Synchronizacja transkrypcji i skanów źródłowych"
-        )
-        subtitle.setObjectName("subtitle")
-
-        main_layout.addWidget(title)
-        main_layout.addWidget(subtitle)
+        main_layout.addLayout(self._create_header())
         main_layout.addWidget(self._create_workflow_group())
         main_layout.addWidget(self._create_destination_group())
 
         self.sync_button = QPushButton("Synchronizuj")
+        self.sync_button.setObjectName("primaryButton")
         self.sync_button.setEnabled(False)
         self.sync_button.setMinimumHeight(42)
         self.sync_button.clicked.connect(
             self._start_synchronization
         )
-        self.download_scans_checkbox = QCheckBox(
-            "Pobieraj brakujące skany"
-        )
-        self.download_scans_checkbox.setChecked(False)
-
-        action_layout = QHBoxLayout()
-        action_layout.addWidget(self.download_scans_checkbox)
-        action_layout.addStretch()
-        main_layout.addLayout(action_layout)
         main_layout.addWidget(self.sync_button)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setTextVisible(False)
         main_layout.addWidget(self.progress_bar)
 
         log_label = QLabel("Dziennik")
         log_label_font = log_label.font()
         log_label_font.setBold(True)
         log_label.setFont(log_label_font)
-        main_layout.addWidget(log_label)
+        log_header = QHBoxLayout()
+        log_header.addWidget(log_label)
+        log_header.addStretch()
+        self.activity_indicator = QLabel("")
+        self.activity_indicator.setObjectName("activityIndicator")
+        self.activity_indicator.setFixedWidth(12)
+        self.activity_indicator.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        log_header.addWidget(self.activity_indicator)
+        self.progress_stage_label = QLabel("")
+        self.progress_stage_label.setObjectName("progressStage")
+        log_header.addWidget(self.progress_stage_label)
+        main_layout.addLayout(log_header)
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
@@ -90,11 +108,60 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
+        self.copyright_label = QLabel(
+            "© 2026 Andrzej Borzym · NIFC-SYNC 3.0"
+        )
+        self.copyright_label.setObjectName("copyrightLabel")
+        self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
 
+        self._restore_settings()
         self.destination_edit.textChanged.connect(
             self._update_sync_button
         )
+
+    def _create_header(self):
+        layout = QHBoxLayout()
+        layout.setSpacing(12)
+
+        self.brand_mark = QLabel()
+        self.brand_mark.setObjectName("brandMark")
+        self.brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_mark.setFixedSize(42, 42)
+        icon_path = (
+            Path(__file__).resolve().parent.parent
+            / "assets"
+            / "sync.svg"
+        )
+        icon = QPixmap(str(icon_path)).scaled(
+            32,
+            32,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.brand_mark.setPixmap(icon)
+
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+        title = QLabel("NIFC-SYNC")
+        title.setObjectName("title")
+        subtitle = QLabel(
+            "Synchronizacja transkrypcji i skanów źródłowych"
+        )
+        subtitle.setObjectName("subtitle")
+        title_layout.addWidget(title)
+        title_layout.addWidget(subtitle)
+
+        self.connection_label = QLabel("Łączenie z NIFC…")
+        self.connection_label.setObjectName("connectionStatus")
+        self.connection_label.setProperty("connected", False)
+
+        layout.addWidget(self.brand_mark)
+        layout.addLayout(title_layout)
+        layout.addStretch()
+        layout.addWidget(self.connection_label)
+
+        return layout
 
     def _create_workflow_group(self):
         group = QGroupBox("Rodzaj transkrypcji")
@@ -140,14 +207,12 @@ class MainWindow(QMainWindow):
             self.destination_edit.setText(selected_directory)
 
     def show_ready_message(self):
-        self.log_view.append(
-            "Interfejs uruchomiony. Silnik synchronizacji "
-            "nie jest jeszcze podłączony."
-        )
+        self.log_view.append("Interfejs uruchomiony.")
 
     def load_catalog(self):
-        self.statusBar().showMessage("Łączenie z NIFC…")
+        self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
+        self._start_activity_indicator()
 
         self.catalog_thread = QThread(self)
         self.catalog_worker = CatalogLoader()
@@ -203,14 +268,26 @@ class MainWindow(QMainWindow):
             )
             radio_button.setEnabled(workflow is not None)
 
-        self.statusBar().showMessage(
-            f"Połączono jako: {user_name}"
+        self.statusBar().showMessage("Gotowy")
+        self.connection_label.setText(
+            f"●  Zalogowano jako: {user_name}"
+        )
+        self.connection_label.setProperty("connected", True)
+        self.connection_label.style().unpolish(
+            self.connection_label
+        )
+        self.connection_label.style().polish(
+            self.connection_label
         )
         self._update_sync_button()
+        self._stop_activity_indicator()
 
     def _catalog_failed(self, message):
         self.log_view.append(f"BŁĄD: {message}")
         self.statusBar().showMessage("Błąd połączenia")
+        self.connection_label.setText("●  Brak połączenia")
+        self.connection_label.setProperty("connected", False)
+        self._stop_activity_indicator()
 
     def _catalog_thread_finished(self):
         self.catalog_thread = None
@@ -237,6 +314,13 @@ class MainWindow(QMainWindow):
 
         return self.workflows.get(workflow_name)
 
+    def _selected_workflow_name(self):
+        if self.modern_radio.isChecked():
+            return "KRN-modern"
+        if self.xml_radio.isChecked():
+            return "XML"
+        return "KRN-diplomatic"
+
     def _start_synchronization(self):
         selected_workflow = self._selected_workflow()
 
@@ -251,18 +335,17 @@ class MainWindow(QMainWindow):
             f"Synchronizacja: {selected_workflow['name']}"
         )
         self.statusBar().showMessage("Synchronizacja…")
+        self.progress_stage_label.setText("Przygotowanie… 0%")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self._set_controls_enabled(False)
+        self._start_activity_indicator()
 
         self.sync_thread = QThread(self)
         self.sync_worker = SyncWorker(
             selected_workflow=selected_workflow,
             available_workflows=list(self.workflows.values()),
             destination=self.destination_edit.text().strip(),
-            download_scans=(
-                self.download_scans_checkbox.isChecked()
-            ),
         )
         self.sync_worker.moveToThread(self.sync_thread)
 
@@ -294,10 +377,19 @@ class MainWindow(QMainWindow):
         if percentage >= 0:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(percentage)
+            self.progress_stage_label.setText(
+                f"Synchronizacja… {percentage}%"
+            )
         else:
             self.progress_bar.setRange(0, 0)
+            self.progress_stage_label.setText("Pobieranie skanów…")
 
-    def _synchronization_completed(self, summary):
+    def _synchronization_completed(self, summary, scan_plans):
+        self.pending_summary = summary
+        self.pending_scan_plans = scan_plans
+
+    def _finish_synchronization(self, summary):
+        self._stop_activity_indicator()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.log_view.append("\n────────────────────────────────")
@@ -315,18 +407,117 @@ class MainWindow(QMainWindow):
             f"Pominięto transkrypcji: {summary['skipped']}"
         )
         self.statusBar().showMessage("Gotowe")
+        self.progress_stage_label.clear()
 
     def _synchronization_failed(self, message):
         self.log_view.append(f"\nBŁĄD: {message}")
         self.statusBar().showMessage("Błąd synchronizacji")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_stage_label.setText("Błąd")
+        self._stop_activity_indicator()
 
     def _sync_thread_finished(self):
         self.sync_thread = None
         self.sync_worker = None
+        if self.pending_summary is None:
+            self._set_controls_enabled(True)
+            self._update_sync_button()
+            return
+
+        QTimer.singleShot(0, self._offer_scan_downloads)
+
+    def _offer_scan_downloads(self):
+        summary = self.pending_summary
+        plans = self.pending_scan_plans
+        self.pending_summary = None
+        self.pending_scan_plans = ()
+
+        if not plans:
+            self._finish_synchronization(summary)
+            self._set_controls_enabled(True)
+            self._update_sync_button()
+            return
+
+        dialog = ScanSelectionDialog(plans, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.log_view.append("Pominięto pobieranie skanów.")
+            self._finish_synchronization(summary)
+            self._set_controls_enabled(True)
+            self._update_sync_button()
+            return
+
+        selected_plans = dialog.selected_plans()
+        self.pending_summary = summary
+        self._start_scan_download(selected_plans)
+
+    def _start_scan_download(self, plans):
+        self.statusBar().showMessage("Pobieranie skanów…")
+        self.progress_stage_label.setText("Pobieranie skanów…")
+        self._start_activity_indicator()
+        self.scan_thread = QThread(self)
+        self.scan_worker = ScanDownloadWorker(plans)
+        self.scan_worker.moveToThread(self.scan_thread)
+
+        self.scan_thread.started.connect(self.scan_worker.run)
+        self.scan_worker.log.connect(self.log_view.append)
+        self.scan_worker.progress.connect(
+            self._update_scan_progress
+        )
+        self.scan_worker.completed.connect(
+            self._scan_download_completed
+        )
+        self.scan_worker.failed.connect(
+            self._synchronization_failed
+        )
+        self.scan_worker.finished.connect(self.scan_thread.quit)
+        self.scan_worker.finished.connect(
+            self.scan_worker.deleteLater
+        )
+        self.scan_thread.finished.connect(
+            self.scan_thread.deleteLater
+        )
+        self.scan_thread.finished.connect(
+            self._scan_thread_finished
+        )
+        self.scan_thread.start()
+
+    def _update_scan_progress(self, percentage, detail):
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(percentage)
+        self.progress_stage_label.setText(detail)
+        self.statusBar().showMessage("Pobieranie skanów…")
+
+    def _scan_download_completed(self, downloaded_packages):
+        self.pending_summary["scan_packages"] = downloaded_packages
+        self._finish_synchronization(self.pending_summary)
+        self.pending_summary = None
+
+    def _scan_thread_finished(self):
+        self.scan_thread = None
+        self.scan_worker = None
         self._set_controls_enabled(True)
         self._update_sync_button()
+
+    def _start_activity_indicator(self):
+        self.activity_frame = 0
+        self.activity_indicator.setText("●")
+        self.activity_indicator.setStyleSheet(
+            f"color: {self.activity_colors[0]};"
+        )
+        self.activity_timer.start()
+
+    def _stop_activity_indicator(self):
+        self.activity_timer.stop()
+        self.activity_indicator.clear()
+
+    def _animate_activity_indicator(self):
+        self.activity_frame = (
+            self.activity_frame + 1
+        ) % len(self.activity_colors)
+        self.activity_indicator.setStyleSheet(
+            f"color: {self.activity_colors[self.activity_frame]};"
+        )
 
     def _set_controls_enabled(self, enabled):
         self.diplomatic_radio.setEnabled(enabled)
@@ -334,5 +525,65 @@ class MainWindow(QMainWindow):
         self.xml_radio.setEnabled(enabled)
         self.destination_edit.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
-        self.download_scans_checkbox.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
+
+    def _restore_settings(self):
+        settings = QSettings()
+
+        geometry = settings.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        destination = settings.value("sync/destination")
+        if destination:
+            self.destination_edit.setText(destination)
+
+        workflow_name = settings.value(
+            "sync/workflow",
+            "KRN-diplomatic",
+        )
+        radio_buttons = {
+            "KRN-diplomatic": self.diplomatic_radio,
+            "KRN-modern": self.modern_radio,
+            "XML": self.xml_radio,
+        }
+        radio_buttons.get(
+            workflow_name,
+            self.diplomatic_radio,
+        ).setChecked(True)
+
+    def _save_settings(self):
+        settings = QSettings()
+        settings.setValue("window/geometry", self.saveGeometry())
+        settings.setValue(
+            "sync/destination",
+            self.destination_edit.text().strip(),
+        )
+        settings.setValue(
+            "sync/workflow",
+            self._selected_workflow_name(),
+        )
+
+    def closeEvent(self, event):
+        threads = (
+            self.catalog_thread,
+            self.sync_thread,
+            self.scan_thread,
+        )
+        is_busy = any(
+            thread is not None and thread.isRunning()
+            for thread in threads
+        )
+
+        if is_busy:
+            QMessageBox.warning(
+                self,
+                "NIFC-SYNC pracuje",
+                "Poczekaj na zakończenie bieżącej operacji "
+                "przed zamknięciem aplikacji.",
+            )
+            event.ignore()
+            return
+
+        self._save_settings()
+        event.accept()

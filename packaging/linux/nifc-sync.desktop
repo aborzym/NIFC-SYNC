@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=NIFC-SYNC
+GenericName=Synchronizacja transkrypcji i skanów
+Comment=Synchronizacja transkrypcji i skanów źródłowych NIFC
+Exec=/opt/nifc-sync/NIFC-SYNC
+Icon=nifc-sync
+Terminal=false
+Categories=AudioVideo;Audio;Utility;
+StartupNotify=true
+StartupWMClass=NIFC-SYNC

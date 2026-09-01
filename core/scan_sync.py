@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+import shutil
 
 import requests
 
@@ -9,14 +11,18 @@ from core.scans import (
     get_part_number,
     get_scan_group_key,
 )
+from core.scan_manifest import validate_scan_manifest, write_scan_manifest
 
 
 @dataclass(frozen=True)
 class ScanDownloadRequest:
     group_key: str
+    transcription_name: str
     source_url: str
     destination_folder: Path
     download_info: object
+    provider: object
+    is_incomplete: bool
 
 
 @dataclass(frozen=True)
@@ -24,18 +30,16 @@ class ScanSyncResult:
     downloaded_packages: int
 
 
-def sync_scans(
+def plan_scans(
     selected_workflow,
     scan_urls_by_group,
     scan_sources_by_url,
     existing_scans_by_url,
     target_folders,
     session,
-    should_download,
-    progress_callback=None,
     log=print,
 ):
-    downloaded_packages = 0
+    plans = []
     selected_scan_groups = {}
 
     log("\nKontrola skanów:")
@@ -96,8 +100,15 @@ def sync_scans(
             ),
         )
         destination_folder = target_folders[primary_file["name"]]
+        is_incomplete = (
+            validate_scan_manifest(destination_folder / "skany")
+            is False
+        )
 
-        log("BRAK SKANÓW")
+        if is_incomplete:
+            log("SKANY SĄ NIEKOMPLETNE — WYMAGAJĄ NAPRAWY")
+        else:
+            log("BRAK SKANÓW")
         log(f"FOLDER DOCELOWY: {destination_folder.name}")
         log(f"URL-scan: {source['url']}")
 
@@ -128,30 +139,81 @@ def sync_scans(
 
         request = ScanDownloadRequest(
             group_key=group_key,
+            transcription_name=primary_file["name"],
             source_url=source["url"],
             destination_folder=destination_folder,
             download_info=download_info,
+            provider=provider,
+            is_incomplete=is_incomplete,
         )
 
-        if not should_download(request):
-            log("POMIJAM POBIERANIE")
-            continue
+        plans.append(request)
+
+    return tuple(plans)
+
+
+def download_scan_plans(
+    session,
+    plans,
+    progress_callback=None,
+    log=print,
+):
+    downloaded_packages = 0
+
+    for request in plans:
+        log(f"\nPOBIERANIE: {request.download_info.filename}")
+        scans_folder = request.destination_folder / "skany"
+        backup_folder = None
+
+        if (
+            scans_folder.exists()
+            and validate_scan_manifest(scans_folder) is False
+        ):
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_folder = request.destination_folder / (
+                f".skany_incomplete_{timestamp}"
+            )
+            scans_folder.rename(backup_folder)
+            log("WYKRYTO NIEKOMPLETNY PAKIET — POBIERAM PONOWNIE")
+
+        if progress_callback:
+            provider_progress = (
+                lambda downloaded, total, request=request: (
+                    progress_callback(
+                        request,
+                        downloaded,
+                        total,
+                    )
+                )
+            )
+        else:
+            provider_progress = None
 
         try:
-            scans_folder = provider.download_and_extract(
+            scans_folder = request.provider.download_and_extract(
                 session,
-                download_info,
-                destination_folder,
-                progress_callback,
+                request.download_info,
+                request.destination_folder,
+                provider_progress,
+            )
+            write_scan_manifest(
+                scans_folder,
+                request.source_url,
+                request.download_info.filename,
             )
         except (
             requests.RequestException,
             OSError,
             ValueError,
         ) as error:
+            if backup_folder is not None and not scans_folder.exists():
+                backup_folder.rename(scans_folder)
             log("")
             log(f"NIE UDAŁO SIĘ POBRAĆ SKANÓW: {error}")
             continue
+
+        if backup_folder is not None:
+            shutil.rmtree(backup_folder, ignore_errors=True)
 
         downloaded_packages += 1
 
@@ -160,4 +222,50 @@ def sync_scans(
 
     return ScanSyncResult(
         downloaded_packages=downloaded_packages,
+    )
+
+
+def sync_scans(
+    selected_workflow,
+    scan_urls_by_group,
+    scan_sources_by_url,
+    existing_scans_by_url,
+    target_folders,
+    session,
+    should_download,
+    progress_callback=None,
+    log=print,
+):
+    plans = plan_scans(
+        selected_workflow,
+        scan_urls_by_group,
+        scan_sources_by_url,
+        existing_scans_by_url,
+        target_folders,
+        session,
+        log=log,
+    )
+    selected_plans = []
+
+    for request in plans:
+        if should_download(request):
+            selected_plans.append(request)
+        else:
+            log("POMIJAM POBIERANIE")
+
+    if progress_callback:
+        adapted_progress = (
+            lambda request, downloaded, total: progress_callback(
+                downloaded,
+                total,
+            )
+        )
+    else:
+        adapted_progress = None
+
+    return download_scan_plans(
+        session,
+        selected_plans,
+        progress_callback=adapted_progress,
+        log=log,
     )
