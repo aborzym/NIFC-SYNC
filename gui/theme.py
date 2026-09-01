@@ -213,20 +213,6 @@ QPushButton#smallButton[connectionAction="busy"] {
     color: #91a9c8;
 }
 
-QPushButton#smallButton[connectionAction="cancel"] {
-    border-color: #806c4f;
-    background: qlineargradient(
-        x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 #443a2b,
-        stop: 1 #373025
-    );
-    color: #ddc99f;
-}
-
-QPushButton#smallButton[connectionAction="cancel"]:hover {
-    border-color: #9a835f;
-    background-color: #514632;
-}
 
 QPushButton#primaryButton {
     border-color: #204aaa;
