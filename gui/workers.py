@@ -1,6 +1,5 @@
 from pathlib import Path
 import subprocess
-from threading import Event
 
 import requests
 from PySide6.QtCore import QObject, Signal, Slot
@@ -17,33 +16,16 @@ from core.scan_sync import download_scan_plans, plan_scans
 from core.sync import sync_transcriptions
 
 
-class CatalogLoadingCancelled(Exception):
-    pass
-
-
 class CatalogLoader(QObject):
     log = Signal(str)
     loaded = Signal(object, str)
     failed = Signal(str)
-    cancelled = Signal()
     finished = Signal()
-
-    def __init__(self):
-        super().__init__()
-        self.cancel_event = Event()
-
-    def cancel(self):
-        self.cancel_event.set()
-
-    def _check_cancelled(self):
-        if self.cancel_event.is_set():
-            raise CatalogLoadingCancelled
 
     @Slot()
     def run(self):
         try:
             self.log.emit("Łączenie z NIFC…")
-            self._check_cancelled()
 
             credentials = load_credentials(
                 Path.home() / ".nifccredentials"
@@ -54,7 +36,6 @@ class CatalogLoader(QObject):
                 credentials["login"],
                 credentials["password"],
             )
-            self._check_cancelled()
 
             if not login_response.ok:
                 raise RuntimeError(
@@ -66,9 +47,7 @@ class CatalogLoader(QObject):
             user_name = user.get("name", credentials["login"])
 
             self.log.emit("Pobieranie danych…")
-            self._check_cancelled()
             files_response = client.get_files()
-            self._check_cancelled()
 
             if not files_response.ok:
                 raise RuntimeError(
@@ -86,12 +65,9 @@ class CatalogLoader(QObject):
                     "transkrypcji."
                 )
 
-            self._check_cancelled()
             self.loaded.emit(workflows, user_name)
             self.log.emit("Pobrano dane z NIFC.")
 
-        except CatalogLoadingCancelled:
-            self.cancelled.emit()
         except (
             OSError,
             KeyError,
