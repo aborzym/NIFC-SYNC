@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -20,14 +21,14 @@ class ScanSelectionDialog(QDialog):
     def __init__(self, plans, parent=None):
         super().__init__(parent)
         self.plans = tuple(plans)
-        self.setWindowTitle("Brakujące skany")
+        self.setWindowTitle("Skany wymagające pobrania")
         self.setMinimumSize(820, 420)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(14)
 
-        title = QLabel("Znaleziono brakujące skany")
+        title = QLabel("Skany wymagające pobrania")
         title.setObjectName("dialogTitle")
         layout.addWidget(title)
         layout.addWidget(
@@ -37,9 +38,15 @@ class ScanSelectionDialog(QDialog):
             )
         )
 
-        self.table = QTableWidget(len(self.plans), 4)
+        self.table = QTableWidget(len(self.plans), 5)
         self.table.setHorizontalHeaderLabels(
-            ("Utwór / sygnatura", "Źródło", "Format", "Rozmiar")
+            (
+                "Utwór / sygnatura",
+                "Stan",
+                "Źródło",
+                "Format",
+                "Rozmiar",
+            )
         )
         self.table.setSelectionMode(
             QAbstractItemView.SelectionMode.NoSelection
@@ -51,7 +58,7 @@ class ScanSelectionDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch
         )
-        for column in (1, 2, 3):
+        for column in (1, 2, 3, 4):
             self.table.horizontalHeader().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents
             )
@@ -65,11 +72,21 @@ class ScanSelectionDialog(QDialog):
             name_item.setToolTip(plan.transcription_name)
             self.table.setItem(row, 0, name_item)
 
+            if plan.is_incomplete:
+                status_item = QTableWidgetItem(
+                    "Niekompletny — do naprawy"
+                )
+                status_item.setForeground(QColor("#f4b86a"))
+            else:
+                status_item = QTableWidgetItem("Brak — do pobrania")
+                status_item.setForeground(QColor("#9fb2c8"))
+            self.table.setItem(row, 1, status_item)
+
             host = urlparse(plan.source_url).netloc or "nieznane"
-            self.table.setItem(row, 1, QTableWidgetItem(host))
+            self.table.setItem(row, 2, QTableWidgetItem(host))
             self.table.setItem(
                 row,
-                2,
+                3,
                 QTableWidgetItem(
                     plan.download_info.content_type or "nieznany"
                 ),
@@ -81,7 +98,7 @@ class ScanSelectionDialog(QDialog):
                 Qt.AlignmentFlag.AlignRight
                 | Qt.AlignmentFlag.AlignVCenter
             )
-            self.table.setItem(row, 3, size_item)
+            self.table.setItem(row, 4, size_item)
 
         self.table.itemChanged.connect(self._update_summary)
         layout.addWidget(self.table, stretch=1)
