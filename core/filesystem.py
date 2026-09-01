@@ -49,7 +49,10 @@ def find_existing_scores(folder):
     return find_files_with_extensions(
         folder,
         SCORE_EXTENSIONS,
-        ignored_directory_prefixes=(".skany_tmp_",),
+        ignored_directory_prefixes=(
+            ".skany_tmp_",
+            ".skany_incomplete_",
+        ),
     )
 
 
