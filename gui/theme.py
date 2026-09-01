@@ -56,10 +56,6 @@ QLabel#activityIndicator {
     font-size: 15px;
 }
 
-QLabel#activityIndicator[activeFrame="1"] {
-    color: #8fb7ff;
-}
-
 QGroupBox {
     border: none;
     margin-top: 18px;
