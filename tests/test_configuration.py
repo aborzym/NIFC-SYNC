@@ -39,6 +39,7 @@ class ConfigurationStoreTest(unittest.TestCase):
             configuration.naming_profile,
             "legacy-v3",
         )
+        self.assertEqual(configuration.nifc_username, "")
         self.assertFalse(configuration.setup_completed)
 
     def test_saves_and_loads_configuration(self):
@@ -47,6 +48,7 @@ class ConfigurationStoreTest(unittest.TestCase):
             storage_kind="mounted",
             workflow="XML",
             naming_profile="legacy-v3",
+            nifc_username="andrzej",
             setup_completed=True,
         )
 
@@ -75,6 +77,7 @@ class ConfigurationStoreTest(unittest.TestCase):
             "KRN-modern",
         )
         self.assertEqual(configuration.storage_kind, "local")
+        self.assertEqual(configuration.nifc_username, "")
         self.assertFalse(configuration.setup_completed)
 
 

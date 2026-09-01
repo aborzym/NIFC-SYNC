@@ -13,6 +13,7 @@ class AppConfiguration:
     storage_kind: StorageKind = "local"
     workflow: str = "KRN-diplomatic"
     naming_profile: str = "legacy-v3"
+    nifc_username: str = ""
     setup_completed: bool = False
 
 
@@ -41,6 +42,13 @@ class ConfigurationStore:
                 "naming/profile",
                 "legacy-v3",
             ),
+            nifc_username=str(
+                self.settings.value(
+                    "credentials/username",
+                    "",
+                )
+                or ""
+            ),
             setup_completed=self.settings.value(
                 "setup/completed",
                 False,
@@ -68,6 +76,10 @@ class ConfigurationStore:
         self.settings.setValue(
             "naming/profile",
             configuration.naming_profile,
+        )
+        self.settings.setValue(
+            "credentials/username",
+            configuration.nifc_username,
         )
         self.settings.setValue(
             "setup/completed",
