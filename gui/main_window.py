@@ -83,6 +83,11 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
+        self.copyright_label = QLabel(
+            "© 2026 Andrzej Borzym · NIFC-SYNC 3.0"
+        )
+        self.copyright_label.setObjectName("copyrightLabel")
+        self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
 
         self._restore_settings()
@@ -240,7 +245,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Połączono jako: {user_name}"
         )
-        self.connection_label.setText("●  Połączono z NIFC")
+        self.connection_label.setText(
+            f"●  Zalogowano jako: {user_name}"
+        )
         self.connection_label.setProperty("connected", True)
         self.connection_label.style().unpolish(
             self.connection_label
@@ -424,7 +431,9 @@ class MainWindow(QMainWindow):
 
         self.scan_thread.started.connect(self.scan_worker.run)
         self.scan_worker.log.connect(self.log_view.append)
-        self.scan_worker.progress.connect(self._update_progress)
+        self.scan_worker.progress.connect(
+            self._update_scan_progress
+        )
         self.scan_worker.completed.connect(
             self._scan_download_completed
         )
@@ -442,6 +451,12 @@ class MainWindow(QMainWindow):
             self._scan_thread_finished
         )
         self.scan_thread.start()
+
+    def _update_scan_progress(self, percentage, detail):
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(percentage)
+        self.progress_stage_label.setText(detail)
+        self.statusBar().showMessage("Pobieranie skanów…")
 
     def _scan_download_completed(self, downloaded_packages):
         self.pending_summary["scan_packages"] = downloaded_packages
