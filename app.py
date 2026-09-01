@@ -1,5 +1,7 @@
 import sys
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from gui.main_window import MainWindow
@@ -10,6 +12,15 @@ def main():
     application = QApplication(sys.argv)
     application.setApplicationName("NIFC-SYNC")
     application.setOrganizationName("NIFC-SYNC")
+    application.setWindowIcon(
+        QIcon(
+            str(
+                Path(__file__).resolve().parent
+                / "assets"
+                / "nifc-sync.svg"
+            )
+        )
+    )
     application.setStyle("Fusion")
     application.setStyleSheet(STYLESHEET)
 
