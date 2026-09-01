@@ -38,6 +38,12 @@ class MainWindow(QMainWindow):
         self.scan_worker = None
         self.pending_summary = None
         self.pending_scan_plans = ()
+        self.activity_frame = 0
+        self.activity_timer = QTimer(self)
+        self.activity_timer.setInterval(450)
+        self.activity_timer.timeout.connect(
+            self._animate_activity_indicator
+        )
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -70,6 +76,13 @@ class MainWindow(QMainWindow):
         log_header = QHBoxLayout()
         log_header.addWidget(log_label)
         log_header.addStretch()
+        self.activity_indicator = QLabel("")
+        self.activity_indicator.setObjectName("activityIndicator")
+        self.activity_indicator.setFixedWidth(12)
+        self.activity_indicator.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        log_header.addWidget(self.activity_indicator)
         self.progress_stage_label = QLabel("Gotowy")
         self.progress_stage_label.setObjectName("progressStage")
         log_header.addWidget(self.progress_stage_label)
@@ -187,6 +200,7 @@ class MainWindow(QMainWindow):
     def load_catalog(self):
         self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
+        self._start_activity_indicator()
 
         self.catalog_thread = QThread(self)
         self.catalog_worker = CatalogLoader()
@@ -254,12 +268,14 @@ class MainWindow(QMainWindow):
             self.connection_label
         )
         self._update_sync_button()
+        self._stop_activity_indicator()
 
     def _catalog_failed(self, message):
         self.log_view.append(f"BŁĄD: {message}")
         self.statusBar().showMessage("Błąd połączenia")
         self.connection_label.setText("●  Brak połączenia")
         self.connection_label.setProperty("connected", False)
+        self._stop_activity_indicator()
 
     def _catalog_thread_finished(self):
         self.catalog_thread = None
@@ -311,6 +327,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self._set_controls_enabled(False)
+        self._start_activity_indicator()
 
         self.sync_thread = QThread(self)
         self.sync_worker = SyncWorker(
@@ -360,6 +377,7 @@ class MainWindow(QMainWindow):
         self.pending_scan_plans = scan_plans
 
     def _finish_synchronization(self, summary):
+        self._stop_activity_indicator()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.log_view.append("\n────────────────────────────────")
@@ -385,6 +403,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_stage_label.setText("Błąd")
+        self._stop_activity_indicator()
 
     def _sync_thread_finished(self):
         self.sync_thread = None
@@ -423,6 +442,7 @@ class MainWindow(QMainWindow):
     def _start_scan_download(self, plans):
         self.statusBar().showMessage("Pobieranie skanów…")
         self.progress_stage_label.setText("Pobieranie skanów…")
+        self._start_activity_indicator()
         self.scan_thread = QThread(self)
         self.scan_worker = ScanDownloadWorker(plans)
         self.scan_worker.moveToThread(self.scan_thread)
@@ -466,6 +486,29 @@ class MainWindow(QMainWindow):
         self.scan_worker = None
         self._set_controls_enabled(True)
         self._update_sync_button()
+
+    def _start_activity_indicator(self):
+        self.activity_frame = 0
+        self.activity_indicator.setText("●")
+        self.activity_indicator.setProperty("activeFrame", 0)
+        self.activity_timer.start()
+
+    def _stop_activity_indicator(self):
+        self.activity_timer.stop()
+        self.activity_indicator.clear()
+
+    def _animate_activity_indicator(self):
+        self.activity_frame = 1 - self.activity_frame
+        self.activity_indicator.setProperty(
+            "activeFrame",
+            self.activity_frame,
+        )
+        self.activity_indicator.style().unpolish(
+            self.activity_indicator
+        )
+        self.activity_indicator.style().polish(
+            self.activity_indicator
+        )
 
     def _set_controls_enabled(self, enabled):
         self.diplomatic_radio.setEnabled(enabled)
