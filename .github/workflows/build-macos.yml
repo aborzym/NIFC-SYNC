@@ -1,0 +1,40 @@
+name: Zbuduj NIFC-SYNC 3.0 dla macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-dmg:
+    name: NIFC-SYNC .dmg (Apple Silicon)
+    runs-on: macos-15
+
+    steps:
+      - name: Pobierz kod NIFC-SYNC 3.0
+        uses: actions/checkout@v6
+        with:
+          ref: develop
+
+      - name: Przygotuj Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Utwórz środowisko budowania
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Uruchom testy
+        run: .venv/bin/python -m unittest discover -v
+
+      - name: Zbuduj aplikację i obraz DMG
+        run: bash scripts/build_macos_package.sh
+
+      - name: Udostępnij DMG do pobrania
+        uses: actions/upload-artifact@v7
+        with:
+          name: nifc-sync-macos-arm64-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
