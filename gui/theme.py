@@ -51,6 +51,27 @@ QLabel#connectionStatus[connected="true"] {
     color: #8fb7ff;
 }
 
+QLabel#connectionDot {
+    min-width: 8px;
+    max-width: 8px;
+    min-height: 8px;
+    max-height: 8px;
+    border-radius: 4px;
+    background-color: #617086;
+}
+
+QLabel#connectionDot[state="connected"] {
+    background-color: #74a5ef;
+}
+
+QLabel#connectionDot[state="error"] {
+    background-color: #b97780;
+}
+
+QLabel#connectionDot[state="disconnected"] {
+    background-color: #697789;
+}
+
 QLabel#activityIndicator {
     color: #315fb9;
     font-size: 15px;
