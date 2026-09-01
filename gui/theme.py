@@ -39,8 +39,12 @@ QLabel#dialogTitle {
 }
 
 QLabel#subtitle, QLabel#connectionStatus,
-QLabel#progressStage {
+QLabel#progressStage, QLabel#copyrightLabel {
     color: #94a3b5;
+}
+
+QLabel#copyrightLabel {
+    font-size: 11px;
 }
 
 QLabel#connectionStatus[connected="true"] {
