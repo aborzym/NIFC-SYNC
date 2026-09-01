@@ -48,7 +48,7 @@ QLabel#copyrightLabel {
 }
 
 QLabel#connectionStatus[connected="true"] {
-    color: #9ed8bf;
+    color: #8fb7ff;
 }
 
 QLabel#activityIndicator {
@@ -175,6 +175,42 @@ QPushButton#smallButton {
     min-height: 30px;
     padding: 0 11px;
     font-size: 12px;
+}
+
+QPushButton#smallButton[connectionAction="connect"] {
+    border-color: #527a69;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 0, y2: 1,
+        stop: 0 #29443a,
+        stop: 1 #22362f
+    );
+    color: #b7dec9;
+}
+
+QPushButton#smallButton[connectionAction="connect"]:hover {
+    border-color: #67937f;
+    background-color: #315044;
+}
+
+QPushButton#smallButton[connectionAction="disconnect"] {
+    border-color: #80565d;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 0, y2: 1,
+        stop: 0 #482d33,
+        stop: 1 #39262b
+    );
+    color: #e1b9bf;
+}
+
+QPushButton#smallButton[connectionAction="disconnect"]:hover {
+    border-color: #98666e;
+    background-color: #55363d;
+}
+
+QPushButton#smallButton[connectionAction="busy"] {
+    border-color: #405777;
+    background-color: #263346;
+    color: #91a9c8;
 }
 
 QPushButton#primaryButton {
