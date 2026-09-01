@@ -6,7 +6,6 @@ STYLESHEET = """
 QWidget {
     background-color: #151a21;
     color: #e8edf4;
-    font-family: "Inter", "Noto Sans", sans-serif;
     font-size: 13px;
 }
 
@@ -170,7 +169,6 @@ QLineEdit:focus, QTextEdit:focus {
 
 QTextEdit {
     padding: 10px;
-    font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
     font-size: 12px;
 }
 
