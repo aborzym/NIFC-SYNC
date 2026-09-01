@@ -1,0 +1,53 @@
+name: Zbuduj pakiet dla Linuxa
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    name: NIFC-SYNC .deb
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v6
+
+      - name: Przygotuj Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Utwórz środowisko budowania
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Uruchom testy
+        run: .venv/bin/python -m unittest discover -v
+
+      - name: Zbuduj pakiet DEB
+        run: bash scripts/build_linux_package.sh
+
+      - name: Udostępnij pakiet do pobrania
+        uses: actions/upload-artifact@v4
+        with:
+          name: nifc-sync-linux-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+      - name: Dodaj pakiet do wydania GitHub
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.deb \
+            --title "NIFC-SYNC ${GITHUB_REF_NAME}" \
+            --generate-notes
