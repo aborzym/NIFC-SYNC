@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.filesystem import find_existing_scores
+from core.scan_manifest import validate_scan_manifest
 from core.scans import folder_matches_scan_group
 
 
@@ -47,6 +48,10 @@ def build_storage_inventory(
 
     for normalized_url, folders in scan_folders_by_url.items():
         for folder in folders:
+            scans_folder = folder / "skany"
+            if validate_scan_manifest(scans_folder) is False:
+                continue
+
             existing_scores = find_existing_scores(folder)
 
             if not existing_scores:
