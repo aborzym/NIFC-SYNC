@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import requests
 from PySide6.QtCore import QObject, Signal, Slot
@@ -102,6 +103,9 @@ class SyncWorker(QObject):
         try:
             self.progress.emit(5)
 
+            self.log.emit("Sprawdzanie katalogu docelowego…")
+            self._check_destination_access()
+
             if not self.destination.is_dir():
                 raise RuntimeError(
                     "Katalog docelowy nie jest dostępny: "
@@ -180,6 +184,30 @@ class SyncWorker(QObject):
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
+
+    def _check_destination_access(self):
+        try:
+            result = subprocess.run(
+                ["ls", "-A", str(self.destination)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=12,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                "Katalog docelowy nie odpowiada. "
+                "Mac lub udział sieciowy może być uśpiony albo "
+                "niedostępny. Obudź Maca i spróbuj ponownie."
+            ) from error
+
+        if result.returncode != 0:
+            detail = result.stderr.strip()
+            message = "Nie można odczytać katalogu docelowego"
+            if detail:
+                message += f": {detail}"
+            raise RuntimeError(message)
 
 
 
