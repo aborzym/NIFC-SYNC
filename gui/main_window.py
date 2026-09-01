@@ -155,11 +155,18 @@ class MainWindow(QMainWindow):
         self.connection_label = QLabel("Łączenie z NIFC…")
         self.connection_label.setObjectName("connectionStatus")
         self.connection_label.setProperty("connected", False)
+        self.connection_button = QPushButton("Połącz")
+        self.connection_button.setObjectName("smallButton")
+        self.connection_button.setEnabled(False)
+        self.connection_button.clicked.connect(
+            self._toggle_connection
+        )
 
         layout.addWidget(self.brand_mark)
         layout.addLayout(title_layout)
         layout.addStretch()
         layout.addWidget(self.connection_label)
+        layout.addWidget(self.connection_button)
 
         return layout
 
@@ -212,6 +219,16 @@ class MainWindow(QMainWindow):
     def load_catalog(self):
         self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
+        self.connection_button.setText("Łączenie…")
+        self.connection_button.setEnabled(False)
+        self.connection_label.setText("Łączenie z NIFC…")
+        self.connection_label.setProperty("connected", False)
+        self.connection_label.style().unpolish(
+            self.connection_label
+        )
+        self.connection_label.style().polish(
+            self.connection_label
+        )
         self._start_activity_indicator()
 
         self.catalog_thread = QThread(self)
@@ -281,17 +298,55 @@ class MainWindow(QMainWindow):
         )
         self._update_sync_button()
         self._stop_activity_indicator()
+        self.connection_button.setText("Rozłącz")
+        self.connection_button.setEnabled(True)
 
     def _catalog_failed(self, message):
         self.log_view.append(f"BŁĄD: {message}")
         self.statusBar().showMessage("Błąd połączenia")
         self.connection_label.setText("●  Brak połączenia")
         self.connection_label.setProperty("connected", False)
+        self.connection_button.setText("Połącz ponownie")
+        self.connection_button.setEnabled(False)
         self._stop_activity_indicator()
 
     def _catalog_thread_finished(self):
         self.catalog_thread = None
         self.catalog_worker = None
+        if not self.workflows:
+            self.connection_button.setEnabled(True)
+
+    def _toggle_connection(self):
+        if self.workflows:
+            self._disconnect_catalog()
+        else:
+            self.load_catalog()
+
+    def _disconnect_catalog(self):
+        self.workflows = {}
+        self.connection_label.setText("●  Rozłączono")
+        self.connection_label.setProperty("connected", False)
+        self.connection_label.style().unpolish(
+            self.connection_label
+        )
+        self.connection_label.style().polish(
+            self.connection_label
+        )
+        self.connection_button.setText("Połącz")
+        self.log_view.append("Rozłączono z NIFC.")
+        self.statusBar().showMessage("Rozłączono")
+        self._set_workflow_counts_empty()
+        self._update_sync_button()
+
+    def _set_workflow_counts_empty(self):
+        buttons = (
+            (self.diplomatic_radio, "KRN diplomatic"),
+            (self.modern_radio, "KRN modern"),
+            (self.xml_radio, "XML"),
+        )
+        for radio_button, label in buttons:
+            radio_button.setText(label)
+            radio_button.setEnabled(False)
 
     def _update_sync_button(self):
         has_catalog = bool(self.workflows)
@@ -406,6 +461,7 @@ class MainWindow(QMainWindow):
         self.log_view.append(
             f"Pominięto transkrypcji: {summary['skipped']}"
         )
+        self.log_view.append("────────────────────────────────")
         self.statusBar().showMessage("Gotowe")
         self.progress_stage_label.clear()
 
@@ -525,6 +581,7 @@ class MainWindow(QMainWindow):
         self.xml_radio.setEnabled(enabled)
         self.destination_edit.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
+        self.connection_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
 
     def _restore_settings(self):
