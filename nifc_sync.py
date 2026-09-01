@@ -223,6 +223,7 @@ def show_download_progress(
 
 
 session = requests.Session()
+scan_session = requests.Session()
 
 credentials_file = Path.home() / ".nifccredentials"
 
@@ -541,7 +542,7 @@ for group_key, group_files in selected_scan_groups.items():
 
     try:
         download_info = provider.get_download_info(
-            session,
+            scan_session,
             source["url"],
         )
     except requests.RequestException as error:
@@ -561,7 +562,7 @@ for group_key, group_files in selected_scan_groups.items():
 
     try:
         scans_folder = provider.download_and_extract(
-            session,
+            scan_session,
             download_info,
             destination_folder,
             show_download_progress,
