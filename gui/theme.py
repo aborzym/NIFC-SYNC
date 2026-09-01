@@ -51,6 +51,15 @@ QLabel#connectionStatus[connected="true"] {
     color: #9ed8bf;
 }
 
+QLabel#activityIndicator {
+    color: #315fb9;
+    font-size: 15px;
+}
+
+QLabel#activityIndicator[activeFrame="1"] {
+    color: #8fb7ff;
+}
+
 QGroupBox {
     border: none;
     margin-top: 18px;
