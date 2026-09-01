@@ -39,8 +39,20 @@ class MainWindow(QMainWindow):
         self.pending_summary = None
         self.pending_scan_plans = ()
         self.activity_frame = 0
+        self.activity_colors = (
+            "#315fb9",
+            "#3d6fc8",
+            "#4b80d8",
+            "#5e91e5",
+            "#73a2ef",
+            "#8fb7ff",
+            "#73a2ef",
+            "#5e91e5",
+            "#4b80d8",
+            "#3d6fc8",
+        )
         self.activity_timer = QTimer(self)
-        self.activity_timer.setInterval(450)
+        self.activity_timer.setInterval(110)
         self.activity_timer.timeout.connect(
             self._animate_activity_indicator
         )
@@ -83,7 +95,7 @@ class MainWindow(QMainWindow):
             Qt.AlignmentFlag.AlignCenter
         )
         log_header.addWidget(self.activity_indicator)
-        self.progress_stage_label = QLabel("Gotowy")
+        self.progress_stage_label = QLabel("")
         self.progress_stage_label.setObjectName("progressStage")
         log_header.addWidget(self.progress_stage_label)
         main_layout.addLayout(log_header)
@@ -395,7 +407,7 @@ class MainWindow(QMainWindow):
             f"Pominięto transkrypcji: {summary['skipped']}"
         )
         self.statusBar().showMessage("Gotowe")
-        self.progress_stage_label.setText("Gotowe — 100%")
+        self.progress_stage_label.clear()
 
     def _synchronization_failed(self, message):
         self.log_view.append(f"\nBŁĄD: {message}")
@@ -490,7 +502,9 @@ class MainWindow(QMainWindow):
     def _start_activity_indicator(self):
         self.activity_frame = 0
         self.activity_indicator.setText("●")
-        self.activity_indicator.setProperty("activeFrame", 0)
+        self.activity_indicator.setStyleSheet(
+            f"color: {self.activity_colors[0]};"
+        )
         self.activity_timer.start()
 
     def _stop_activity_indicator(self):
@@ -498,16 +512,11 @@ class MainWindow(QMainWindow):
         self.activity_indicator.clear()
 
     def _animate_activity_indicator(self):
-        self.activity_frame = 1 - self.activity_frame
-        self.activity_indicator.setProperty(
-            "activeFrame",
-            self.activity_frame,
-        )
-        self.activity_indicator.style().unpolish(
-            self.activity_indicator
-        )
-        self.activity_indicator.style().polish(
-            self.activity_indicator
+        self.activity_frame = (
+            self.activity_frame + 1
+        ) % len(self.activity_colors)
+        self.activity_indicator.setStyleSheet(
+            f"color: {self.activity_colors[self.activity_frame]};"
         )
 
     def _set_controls_enabled(self, enabled):
