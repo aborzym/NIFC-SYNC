@@ -185,7 +185,7 @@ class MainWindow(QMainWindow):
         self.log_view.append("Interfejs uruchomiony.")
 
     def load_catalog(self):
-        self.statusBar().showMessage("Łączenie z NIFC…")
+        self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
 
         self.catalog_thread = QThread(self)
