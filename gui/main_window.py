@@ -155,6 +155,10 @@ class MainWindow(QMainWindow):
         self.connection_label = QLabel("Łączenie z NIFC…")
         self.connection_label.setObjectName("connectionStatus")
         self.connection_label.setProperty("connected", False)
+        self.connection_dot = QLabel()
+        self.connection_dot.setObjectName("connectionDot")
+        self.connection_dot.setProperty("state", "connecting")
+        self.connection_dot.setFixedSize(8, 8)
         self.connection_button = QPushButton("Połącz")
         self.connection_button.setObjectName("smallButton")
         self.connection_button.setFixedWidth(132)
@@ -170,7 +174,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.brand_mark)
         layout.addLayout(title_layout)
         layout.addStretch()
-        layout.addWidget(self.connection_label)
+        status_layout = QHBoxLayout()
+        status_layout.setSpacing(6)
+        status_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self.connection_dot)
+        status_layout.addWidget(self.connection_label)
+        layout.addLayout(status_layout)
         layout.addWidget(self.connection_button)
 
         return layout
@@ -229,6 +238,7 @@ class MainWindow(QMainWindow):
         self.connection_button.setEnabled(False)
         self.connection_label.setText("Łączenie z NIFC…")
         self.connection_label.setProperty("connected", False)
+        self._set_connection_dot_state("connecting")
         self.connection_label.style().unpolish(
             self.connection_label
         )
@@ -293,9 +303,10 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage("Gotowy")
         self.connection_label.setText(
-            f"●  Zalogowano jako: {user_name}"
+            f"Zalogowano jako: {user_name}"
         )
         self.connection_label.setProperty("connected", True)
+        self._set_connection_dot_state("connected")
         self.connection_label.style().unpolish(
             self.connection_label
         )
@@ -311,8 +322,9 @@ class MainWindow(QMainWindow):
     def _catalog_failed(self, message):
         self.log_view.append(f"BŁĄD: {message}")
         self.statusBar().showMessage("Błąd połączenia")
-        self.connection_label.setText("●  Brak połączenia")
+        self.connection_label.setText("Brak połączenia")
         self.connection_label.setProperty("connected", False)
+        self._set_connection_dot_state("error")
         self.connection_button.setText("Połącz ponownie")
         self._set_connection_button_action("connect")
         self.connection_button.setEnabled(False)
@@ -332,8 +344,9 @@ class MainWindow(QMainWindow):
 
     def _disconnect_catalog(self):
         self.workflows = {}
-        self.connection_label.setText("●  Rozłączono")
+        self.connection_label.setText("Rozłączono")
         self.connection_label.setProperty("connected", False)
+        self._set_connection_dot_state("disconnected")
         self.connection_label.style().unpolish(
             self.connection_label
         )
@@ -357,6 +370,15 @@ class MainWindow(QMainWindow):
         )
         self.connection_button.style().polish(
             self.connection_button
+        )
+
+    def _set_connection_dot_state(self, state):
+        self.connection_dot.setProperty("state", state)
+        self.connection_dot.style().unpolish(
+            self.connection_dot
+        )
+        self.connection_dot.style().polish(
+            self.connection_dot
         )
 
     def _set_workflow_counts_empty(self):
