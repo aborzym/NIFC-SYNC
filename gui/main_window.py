@@ -242,9 +242,7 @@ class MainWindow(QMainWindow):
             )
             radio_button.setEnabled(workflow is not None)
 
-        self.statusBar().showMessage(
-            f"Połączono jako: {user_name}"
-        )
+        self.statusBar().showMessage("Gotowy")
         self.connection_label.setText(
             f"●  Zalogowano jako: {user_name}"
         )
