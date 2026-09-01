@@ -224,9 +224,9 @@ class MainWindow(QMainWindow):
     def load_catalog(self):
         self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
-        self.connection_button.setText("Anuluj")
-        self._set_connection_button_action("cancel")
-        self.connection_button.setEnabled(True)
+        self.connection_button.setText("Łączenie…")
+        self._set_connection_button_action("busy")
+        self.connection_button.setEnabled(False)
         self.connection_label.setText("Łączenie z NIFC…")
         self.connection_label.setProperty("connected", False)
         self.connection_label.style().unpolish(
@@ -250,9 +250,6 @@ class MainWindow(QMainWindow):
         )
         self.catalog_worker.failed.connect(
             self._catalog_failed
-        )
-        self.catalog_worker.cancelled.connect(
-            self._catalog_cancelled
         )
         self.catalog_worker.finished.connect(
             self.catalog_thread.quit
@@ -321,16 +318,6 @@ class MainWindow(QMainWindow):
         self.connection_button.setEnabled(False)
         self._stop_activity_indicator()
 
-    def _catalog_cancelled(self):
-        self.log_view.append("Anulowano łączenie z NIFC.")
-        self.statusBar().showMessage("Rozłączono")
-        self.connection_label.setText("●  Rozłączono")
-        self.connection_label.setProperty("connected", False)
-        self.connection_button.setText("Połącz")
-        self._set_connection_button_action("connect")
-        self.connection_button.setEnabled(False)
-        self._stop_activity_indicator()
-
     def _catalog_thread_finished(self):
         self.catalog_thread = None
         self.catalog_worker = None
@@ -338,24 +325,10 @@ class MainWindow(QMainWindow):
             self.connection_button.setEnabled(True)
 
     def _toggle_connection(self):
-        if (
-            self.catalog_thread is not None
-            and self.catalog_thread.isRunning()
-        ):
-            self._cancel_catalog_loading()
-        elif self.workflows:
+        if self.workflows:
             self._disconnect_catalog()
         else:
             self.load_catalog()
-
-    def _cancel_catalog_loading(self):
-        if self.catalog_worker is None:
-            return
-        self.catalog_worker.cancel()
-        self.connection_button.setText("Anulowanie…")
-        self._set_connection_button_action("busy")
-        self.connection_button.setEnabled(False)
-        self.connection_label.setText("Anulowanie łączenia…")
 
     def _disconnect_catalog(self):
         self.workflows = {}
