@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -127,6 +127,19 @@ class ScanSelectionDialog(QDialog):
         layout.addLayout(buttons)
 
         self._update_summary()
+        self._restore_geometry()
+
+    def _restore_geometry(self):
+        geometry = QSettings().value("scan_dialog/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+    def done(self, result):
+        QSettings().setValue(
+            "scan_dialog/geometry",
+            self.saveGeometry(),
+        )
+        super().done(result)
 
     def selected_plans(self):
         return tuple(
