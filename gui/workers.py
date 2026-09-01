@@ -9,6 +9,7 @@ from core.catalog import (
 )
 from core.client import NifcClient, load_credentials
 from core.cleanup import cleanup_scan_staging_folders
+from core.filesystem import format_file_size
 from core.inventory import build_storage_inventory
 from core.scan_sync import download_scan_plans, plan_scans
 from core.sync import sync_transcriptions
@@ -184,7 +185,7 @@ class SyncWorker(QObject):
 
 class ScanDownloadWorker(QObject):
     log = Signal(str)
-    progress = Signal(int)
+    progress = Signal(int, str)
     completed = Signal(int)
     failed = Signal(str)
     finished = Signal()
@@ -218,4 +219,22 @@ class ScanDownloadWorker(QObject):
         overall_fraction = (
             package_index + package_fraction
         ) / len(self.plans)
-        self.progress.emit(80 + round(overall_fraction * 19))
+        known_total = sum(
+            plan.download_info.size or 0 for plan in self.plans
+        )
+        completed_size = sum(
+            plan.download_info.size or 0
+            for plan in self.plans[:package_index]
+        )
+        downloaded_size = completed_size + downloaded
+        if known_total:
+            detail = (
+                f"Pobrano {format_file_size(downloaded_size)} "
+                f"z {format_file_size(known_total)}"
+            )
+        else:
+            detail = f"Pobrano {format_file_size(downloaded)}"
+        self.progress.emit(
+            80 + round(overall_fraction * 19),
+            detail,
+        )
