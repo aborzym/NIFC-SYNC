@@ -171,6 +171,12 @@ QPushButton:hover {
     background-color: #354251;
 }
 
+QPushButton#smallButton {
+    min-height: 30px;
+    padding: 0 11px;
+    font-size: 12px;
+}
+
 QPushButton#primaryButton {
     border-color: #204aaa;
     background: qlineargradient(
