@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QThread, QTimer, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
     QDialog,
@@ -102,6 +102,11 @@ class MainWindow(QMainWindow):
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
+        self.log_view.setFont(
+            QFontDatabase.systemFont(
+                QFontDatabase.SystemFont.FixedFont
+            )
+        )
         self.log_view.setPlaceholderText(
             "Tutaj pojawi się przebieg synchronizacji."
         )
