@@ -22,3 +22,6 @@ Thumbs.db
 *.part
 .skany_tmp_*/
 problem.txt
+build/
+dist/
+*.spec

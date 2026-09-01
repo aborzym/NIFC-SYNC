@@ -1,0 +1,10 @@
+Package: nifc-sync
+Version: 3.0.0
+Section: sound
+Priority: optional
+Architecture: amd64
+Maintainer: Andrzej Borzym
+Depends: libxcb-cursor0, libxkbcommon-x11-0, libgl1
+Description: Synchronizacja transkrypcji i skanów źródłowych NIFC
+ Graficzne narzędzie do synchronizacji transkrypcji oraz skanów
+ źródłowych z katalogiem roboczym.

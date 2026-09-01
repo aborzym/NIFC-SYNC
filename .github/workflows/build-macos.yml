@@ -1,4 +1,4 @@
-name: Zbuduj NIFC-SYNC 3.0 dla macOS
+name: Zbuduj pakiet dla macOS
 
 on:
   workflow_dispatch:
@@ -9,10 +9,8 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Pobierz kod NIFC-SYNC 3.0
+      - name: Pobierz kod
         uses: actions/checkout@v6
-        with:
-          ref: develop
 
       - name: Przygotuj Python
         uses: actions/setup-python@v6

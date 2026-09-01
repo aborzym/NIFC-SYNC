@@ -1,7 +1,13 @@
-name: Zbuduj NIFC-SYNC 3.0 dla Linuxa
+name: Zbuduj pakiet dla Linuxa
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build-deb:
@@ -9,10 +15,8 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Pobierz kod NIFC-SYNC 3.0
+      - name: Pobierz kod
         uses: actions/checkout@v6
-        with:
-          ref: develop
 
       - name: Przygotuj Python
         uses: actions/setup-python@v6
@@ -38,3 +42,12 @@ jobs:
           name: nifc-sync-linux-deb
           path: dist/*.deb
           if-no-files-found: error
+
+      - name: Dodaj pakiet do wydania GitHub
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.deb \
+            --title "NIFC-SYNC ${GITHUB_REF_NAME}" \
+            --generate-notes
