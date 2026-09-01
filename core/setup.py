@@ -19,7 +19,7 @@ class SetupError(RuntimeError):
 
 @dataclass(frozen=True)
 class SetupRequest:
-    destination: Path
+    destination: Path | None
     storage_kind: StorageKind
     username: str
     password: str = field(repr=False)
@@ -37,6 +37,9 @@ def complete_setup(
 
     if not request.password:
         raise SetupError("Podaj hasło NIFC.")
+
+    if request.destination is None:
+        raise SetupError("Wybierz katalog docelowy.")
 
     validation = validate_storage(
         request.destination,

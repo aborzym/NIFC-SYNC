@@ -113,6 +113,26 @@ class CompleteSetupTest(unittest.TestCase):
 
         self.credential_store.save.assert_not_called()
 
+    def test_rejects_missing_destination(self):
+        request = SetupRequest(
+            destination=None,
+            storage_kind="local",
+            username="andrzej",
+            password="tajne-haslo",
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "Wybierz katalog docelowy",
+        ):
+            complete_setup(
+                request,
+                self.configuration_store,
+                self.credential_store,
+            )
+
+        self.credential_store.save.assert_not_called()
+
     def test_does_not_expose_password_in_request_repr(self):
         request = SetupRequest(
             destination=self.destination,
