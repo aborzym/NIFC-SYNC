@@ -157,6 +157,10 @@ class MainWindow(QMainWindow):
         self.connection_label.setProperty("connected", False)
         self.connection_button = QPushButton("Połącz")
         self.connection_button.setObjectName("smallButton")
+        self.connection_button.setProperty(
+            "connectionAction",
+            "connect",
+        )
         self.connection_button.setEnabled(False)
         self.connection_button.clicked.connect(
             self._toggle_connection
@@ -220,6 +224,7 @@ class MainWindow(QMainWindow):
         self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
         self.connection_button.setText("Łączenie…")
+        self._set_connection_button_action("busy")
         self.connection_button.setEnabled(False)
         self.connection_label.setText("Łączenie z NIFC…")
         self.connection_label.setProperty("connected", False)
@@ -299,6 +304,7 @@ class MainWindow(QMainWindow):
         self._update_sync_button()
         self._stop_activity_indicator()
         self.connection_button.setText("Rozłącz")
+        self._set_connection_button_action("disconnect")
         self.connection_button.setEnabled(True)
 
     def _catalog_failed(self, message):
@@ -307,6 +313,7 @@ class MainWindow(QMainWindow):
         self.connection_label.setText("●  Brak połączenia")
         self.connection_label.setProperty("connected", False)
         self.connection_button.setText("Połącz ponownie")
+        self._set_connection_button_action("connect")
         self.connection_button.setEnabled(False)
         self._stop_activity_indicator()
 
@@ -333,10 +340,23 @@ class MainWindow(QMainWindow):
             self.connection_label
         )
         self.connection_button.setText("Połącz")
+        self._set_connection_button_action("connect")
         self.log_view.append("Rozłączono z NIFC.")
         self.statusBar().showMessage("Rozłączono")
         self._set_workflow_counts_empty()
         self._update_sync_button()
+
+    def _set_connection_button_action(self, action):
+        self.connection_button.setProperty(
+            "connectionAction",
+            action,
+        )
+        self.connection_button.style().unpolish(
+            self.connection_button
+        )
+        self.connection_button.style().polish(
+            self.connection_button
+        )
 
     def _set_workflow_counts_empty(self):
         buttons = (
