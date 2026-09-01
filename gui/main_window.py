@@ -1,24 +1,26 @@
+from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QThread, QTimer, Qt
+from PySide6.QtCore import QSettings, Qt, QThread, QTimer
 from PySide6.QtGui import QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
     QDialog,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QProgressBar,
+    QPushButton,
     QRadioButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from core.configuration import ConfigurationStore
 from gui.scan_dialog import ScanSelectionDialog
 from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
 
@@ -27,6 +29,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.configuration_store = ConfigurationStore()
         self.setWindowTitle("NIFC-SYNC 3.0")
         self.setMinimumSize(760, 560)
         self.workflows = {}
@@ -53,9 +56,7 @@ class MainWindow(QMainWindow):
         )
         self.activity_timer = QTimer(self)
         self.activity_timer.setInterval(110)
-        self.activity_timer.timeout.connect(
-            self._animate_activity_indicator
-        )
+        self.activity_timer.timeout.connect(self._animate_activity_indicator)
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -70,9 +71,7 @@ class MainWindow(QMainWindow):
         self.sync_button.setObjectName("primaryButton")
         self.sync_button.setEnabled(False)
         self.sync_button.setMinimumHeight(42)
-        self.sync_button.clicked.connect(
-            self._start_synchronization
-        )
+        self.sync_button.clicked.connect(self._start_synchronization)
         main_layout.addWidget(self.sync_button)
 
         self.progress_bar = QProgressBar()
@@ -91,9 +90,7 @@ class MainWindow(QMainWindow):
         self.activity_indicator = QLabel("")
         self.activity_indicator.setObjectName("activityIndicator")
         self.activity_indicator.setFixedWidth(12)
-        self.activity_indicator.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
+        self.activity_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         log_header.addWidget(self.activity_indicator)
         self.progress_stage_label = QLabel("")
         self.progress_stage_label.setObjectName("progressStage")
@@ -103,27 +100,19 @@ class MainWindow(QMainWindow):
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setFont(
-            QFontDatabase.systemFont(
-                QFontDatabase.SystemFont.FixedFont
-            )
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         )
-        self.log_view.setPlaceholderText(
-            "Tutaj pojawi się przebieg synchronizacji."
-        )
+        self.log_view.setPlaceholderText("Tutaj pojawi się przebieg synchronizacji.")
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
-        self.copyright_label = QLabel(
-            "© 2026 Andrzej Borzym · NIFC-SYNC 3.0"
-        )
+        self.copyright_label = QLabel("© 2026 Andrzej Borzym · NIFC-SYNC 3.0")
         self.copyright_label.setObjectName("copyrightLabel")
         self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
 
         self._restore_settings()
-        self.destination_edit.textChanged.connect(
-            self._update_sync_button
-        )
+        self.destination_edit.textChanged.connect(self._update_sync_button)
 
     def _create_header(self):
         layout = QHBoxLayout()
@@ -133,11 +122,7 @@ class MainWindow(QMainWindow):
         self.brand_mark.setObjectName("brandMark")
         self.brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.brand_mark.setFixedSize(42, 42)
-        icon_path = (
-            Path(__file__).resolve().parent.parent
-            / "assets"
-            / "sync.svg"
-        )
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "sync.svg"
         icon = QPixmap(str(icon_path)).scaled(
             32,
             32,
@@ -150,9 +135,7 @@ class MainWindow(QMainWindow):
         title_layout.setSpacing(2)
         title = QLabel("NIFC-SYNC")
         title.setObjectName("title")
-        subtitle = QLabel(
-            "Synchronizacja transkrypcji i skanów źródłowych"
-        )
+        subtitle = QLabel("Synchronizacja transkrypcji i skanów źródłowych")
         subtitle.setObjectName("subtitle")
         title_layout.addWidget(title)
         title_layout.addWidget(subtitle)
@@ -172,9 +155,7 @@ class MainWindow(QMainWindow):
             "connect",
         )
         self.connection_button.setEnabled(False)
-        self.connection_button.clicked.connect(
-            self._toggle_connection
-        )
+        self.connection_button.clicked.connect(self._toggle_connection)
 
         layout.addWidget(self.brand_mark)
         layout.addLayout(title_layout)
@@ -209,9 +190,7 @@ class MainWindow(QMainWindow):
         group = QGroupBox("Katalog docelowy")
         layout = QHBoxLayout(group)
 
-        self.destination_edit = QLineEdit(
-            str(Path.home() / "mac_transkrypcje")
-        )
+        self.destination_edit = QLineEdit(str(Path.home() / "mac_transkrypcje"))
         self.destination_edit.setClearButtonEnabled(True)
 
         self.browse_button = QPushButton("Wybierz…")
@@ -244,48 +223,27 @@ class MainWindow(QMainWindow):
         self.connection_label.setText("Łączenie z NIFC…")
         self.connection_label.setProperty("connected", False)
         self._set_connection_dot_state("connecting")
-        self.connection_label.style().unpolish(
-            self.connection_label
-        )
-        self.connection_label.style().polish(
-            self.connection_label
-        )
+        self.connection_label.style().unpolish(self.connection_label)
+        self.connection_label.style().polish(self.connection_label)
         self._start_activity_indicator()
 
         self.catalog_thread = QThread(self)
         self.catalog_worker = CatalogLoader()
         self.catalog_worker.moveToThread(self.catalog_thread)
 
-        self.catalog_thread.started.connect(
-            self.catalog_worker.run
-        )
+        self.catalog_thread.started.connect(self.catalog_worker.run)
         self.catalog_worker.log.connect(self.log_view.append)
-        self.catalog_worker.loaded.connect(
-            self._catalog_loaded
-        )
-        self.catalog_worker.failed.connect(
-            self._catalog_failed
-        )
-        self.catalog_worker.finished.connect(
-            self.catalog_thread.quit
-        )
-        self.catalog_worker.finished.connect(
-            self.catalog_worker.deleteLater
-        )
-        self.catalog_thread.finished.connect(
-            self.catalog_thread.deleteLater
-        )
-        self.catalog_thread.finished.connect(
-            self._catalog_thread_finished
-        )
+        self.catalog_worker.loaded.connect(self._catalog_loaded)
+        self.catalog_worker.failed.connect(self._catalog_failed)
+        self.catalog_worker.finished.connect(self.catalog_thread.quit)
+        self.catalog_worker.finished.connect(self.catalog_worker.deleteLater)
+        self.catalog_thread.finished.connect(self.catalog_thread.deleteLater)
+        self.catalog_thread.finished.connect(self._catalog_thread_finished)
 
         self.catalog_thread.start()
 
     def _catalog_loaded(self, workflows, user_name):
-        self.workflows = {
-            workflow["name"]: workflow
-            for workflow in workflows
-        }
+        self.workflows = {workflow["name"]: workflow for workflow in workflows}
 
         radio_buttons = {
             "KRN-diplomatic": self.diplomatic_radio,
@@ -301,23 +259,15 @@ class MainWindow(QMainWindow):
         for workflow_name, radio_button in radio_buttons.items():
             workflow = self.workflows.get(workflow_name)
             file_count = len(workflow["files"]) if workflow else 0
-            radio_button.setText(
-                f"{labels[workflow_name]} ({file_count})"
-            )
+            radio_button.setText(f"{labels[workflow_name]} ({file_count})")
             radio_button.setEnabled(workflow is not None)
 
         self.statusBar().showMessage("Gotowy")
-        self.connection_label.setText(
-            f"Zalogowano jako: {user_name}"
-        )
+        self.connection_label.setText(f"Zalogowano jako: {user_name}")
         self.connection_label.setProperty("connected", True)
         self._set_connection_dot_state("connected")
-        self.connection_label.style().unpolish(
-            self.connection_label
-        )
-        self.connection_label.style().polish(
-            self.connection_label
-        )
+        self.connection_label.style().unpolish(self.connection_label)
+        self.connection_label.style().polish(self.connection_label)
         self._update_sync_button()
         self._stop_activity_indicator()
         self.connection_button.setText("Rozłącz")
@@ -352,12 +302,8 @@ class MainWindow(QMainWindow):
         self.connection_label.setText("Rozłączono")
         self.connection_label.setProperty("connected", False)
         self._set_connection_dot_state("disconnected")
-        self.connection_label.style().unpolish(
-            self.connection_label
-        )
-        self.connection_label.style().polish(
-            self.connection_label
-        )
+        self.connection_label.style().unpolish(self.connection_label)
+        self.connection_label.style().polish(self.connection_label)
         self.connection_button.setText("Połącz")
         self._set_connection_button_action("connect")
         self.log_view.append("Rozłączono z NIFC.")
@@ -370,21 +316,13 @@ class MainWindow(QMainWindow):
             "connectionAction",
             action,
         )
-        self.connection_button.style().unpolish(
-            self.connection_button
-        )
-        self.connection_button.style().polish(
-            self.connection_button
-        )
+        self.connection_button.style().unpolish(self.connection_button)
+        self.connection_button.style().polish(self.connection_button)
 
     def _set_connection_dot_state(self, state):
         self.connection_dot.setProperty("state", state)
-        self.connection_dot.style().unpolish(
-            self.connection_dot
-        )
-        self.connection_dot.style().polish(
-            self.connection_dot
-        )
+        self.connection_dot.style().unpolish(self.connection_dot)
+        self.connection_dot.style().polish(self.connection_dot)
 
     def _set_workflow_counts_empty(self):
         buttons = (
@@ -398,13 +336,9 @@ class MainWindow(QMainWindow):
 
     def _update_sync_button(self):
         has_catalog = bool(self.workflows)
-        has_destination = bool(
-            self.destination_edit.text().strip()
-        )
+        has_destination = bool(self.destination_edit.text().strip())
         self.sync_button.setEnabled(
-            has_catalog
-            and has_destination
-            and self.sync_thread is None
+            has_catalog and has_destination and self.sync_thread is None
         )
 
     def _selected_workflow(self):
@@ -428,15 +362,11 @@ class MainWindow(QMainWindow):
         selected_workflow = self._selected_workflow()
 
         if selected_workflow is None:
-            self._catalog_failed(
-                "Nie wybrano rodzaju transkrypcji."
-            )
+            self._catalog_failed("Nie wybrano rodzaju transkrypcji.")
             return
 
         self.log_view.clear()
-        self.log_view.append(
-            f"Synchronizacja: {selected_workflow['name']}"
-        )
+        self.log_view.append(f"Synchronizacja: {selected_workflow['name']}")
         self.statusBar().showMessage("Synchronizacja…")
         self.progress_stage_label.setText("Przygotowanie… 0%")
         self.progress_bar.setRange(0, 100)
@@ -454,25 +384,13 @@ class MainWindow(QMainWindow):
 
         self.sync_thread.started.connect(self.sync_worker.run)
         self.sync_worker.log.connect(self.log_view.append)
-        self.sync_worker.progress.connect(
-            self._update_progress
-        )
-        self.sync_worker.completed.connect(
-            self._synchronization_completed
-        )
-        self.sync_worker.failed.connect(
-            self._synchronization_failed
-        )
+        self.sync_worker.progress.connect(self._update_progress)
+        self.sync_worker.completed.connect(self._synchronization_completed)
+        self.sync_worker.failed.connect(self._synchronization_failed)
         self.sync_worker.finished.connect(self.sync_thread.quit)
-        self.sync_worker.finished.connect(
-            self.sync_worker.deleteLater
-        )
-        self.sync_thread.finished.connect(
-            self.sync_thread.deleteLater
-        )
-        self.sync_thread.finished.connect(
-            self._sync_thread_finished
-        )
+        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
+        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
+        self.sync_thread.finished.connect(self._sync_thread_finished)
 
         self.sync_thread.start()
 
@@ -480,9 +398,7 @@ class MainWindow(QMainWindow):
         if percentage >= 0:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(percentage)
-            self.progress_stage_label.setText(
-                f"Synchronizacja… {percentage}%"
-            )
+            self.progress_stage_label.setText(f"Synchronizacja… {percentage}%")
         else:
             self.progress_bar.setRange(0, 0)
             self.progress_stage_label.setText("Pobieranie skanów…")
@@ -497,18 +413,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.log_view.append("\n────────────────────────────────")
         self.log_view.append("GOTOWE")
-        self.log_view.append(
-            f"Utworzono folderów: {summary['created']}"
-        )
-        self.log_view.append(
-            f"Pobrano transkrypcji: {summary['downloaded']}"
-        )
-        self.log_view.append(
-            f"Pobrano pakietów skanów: {summary['scan_packages']}"
-        )
-        self.log_view.append(
-            f"Pominięto transkrypcji: {summary['skipped']}"
-        )
+        self.log_view.append(f"Utworzono folderów: {summary['created']}")
+        self.log_view.append(f"Pobrano transkrypcji: {summary['downloaded']}")
+        self.log_view.append(f"Pobrano pakietów skanów: {summary['scan_packages']}")
+        self.log_view.append(f"Pominięto transkrypcji: {summary['skipped']}")
         self.log_view.append("────────────────────────────────")
         self.statusBar().showMessage("Gotowe")
         self.progress_stage_label.clear()
@@ -565,25 +473,13 @@ class MainWindow(QMainWindow):
 
         self.scan_thread.started.connect(self.scan_worker.run)
         self.scan_worker.log.connect(self.log_view.append)
-        self.scan_worker.progress.connect(
-            self._update_scan_progress
-        )
-        self.scan_worker.completed.connect(
-            self._scan_download_completed
-        )
-        self.scan_worker.failed.connect(
-            self._synchronization_failed
-        )
+        self.scan_worker.progress.connect(self._update_scan_progress)
+        self.scan_worker.completed.connect(self._scan_download_completed)
+        self.scan_worker.failed.connect(self._synchronization_failed)
         self.scan_worker.finished.connect(self.scan_thread.quit)
-        self.scan_worker.finished.connect(
-            self.scan_worker.deleteLater
-        )
-        self.scan_thread.finished.connect(
-            self.scan_thread.deleteLater
-        )
-        self.scan_thread.finished.connect(
-            self._scan_thread_finished
-        )
+        self.scan_worker.finished.connect(self.scan_worker.deleteLater)
+        self.scan_thread.finished.connect(self.scan_thread.deleteLater)
+        self.scan_thread.finished.connect(self._scan_thread_finished)
         self.scan_thread.start()
 
     def _update_scan_progress(self, percentage, detail):
@@ -606,9 +502,7 @@ class MainWindow(QMainWindow):
     def _start_activity_indicator(self):
         self.activity_frame = 0
         self.activity_indicator.setText("●")
-        self.activity_indicator.setStyleSheet(
-            f"color: {self.activity_colors[0]};"
-        )
+        self.activity_indicator.setStyleSheet(f"color: {self.activity_colors[0]};")
         self.activity_timer.start()
 
     def _stop_activity_indicator(self):
@@ -616,9 +510,7 @@ class MainWindow(QMainWindow):
         self.activity_indicator.clear()
 
     def _animate_activity_indicator(self):
-        self.activity_frame = (
-            self.activity_frame + 1
-        ) % len(self.activity_colors)
+        self.activity_frame = (self.activity_frame + 1) % len(self.activity_colors)
         self.activity_indicator.setStyleSheet(
             f"color: {self.activity_colors[self.activity_frame]};"
         )
@@ -639,35 +531,35 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
 
-        destination = settings.value("sync/destination")
-        if destination:
-            self.destination_edit.setText(destination)
+        configuration = self.configuration_store.load()
 
-        workflow_name = settings.value(
-            "sync/workflow",
-            "KRN-diplomatic",
-        )
+        if configuration.destination is not None:
+            self.destination_edit.setText(str(configuration.destination))
+
         radio_buttons = {
             "KRN-diplomatic": self.diplomatic_radio,
             "KRN-modern": self.modern_radio,
             "XML": self.xml_radio,
         }
         radio_buttons.get(
-            workflow_name,
+            configuration.workflow,
             self.diplomatic_radio,
         ).setChecked(True)
 
     def _save_settings(self):
         settings = QSettings()
-        settings.setValue("window/geometry", self.saveGeometry())
         settings.setValue(
-            "sync/destination",
-            self.destination_edit.text().strip(),
+            "window/geometry",
+            self.saveGeometry(),
         )
-        settings.setValue(
-            "sync/workflow",
-            self._selected_workflow_name(),
+
+        destination_value = self.destination_edit.text().strip()
+        configuration = replace(
+            self.configuration_store.load(),
+            destination=(Path(destination_value) if destination_value else None),
+            workflow=self._selected_workflow_name(),
         )
+        self.configuration_store.save(configuration)
 
     def closeEvent(self, event):
         threads = (
@@ -675,10 +567,7 @@ class MainWindow(QMainWindow):
             self.sync_thread,
             self.scan_thread,
         )
-        is_busy = any(
-            thread is not None and thread.isRunning()
-            for thread in threads
-        )
+        is_busy = any(thread is not None and thread.isRunning() for thread in threads)
 
         if is_busy:
             QMessageBox.warning(
