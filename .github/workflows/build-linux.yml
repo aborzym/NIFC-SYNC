@@ -1,0 +1,40 @@
+name: Zbuduj NIFC-SYNC 3.0 dla Linuxa
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    name: NIFC-SYNC .deb
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Pobierz kod NIFC-SYNC 3.0
+        uses: actions/checkout@v6
+        with:
+          ref: develop
+
+      - name: Przygotuj Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Utwórz środowisko budowania
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Uruchom testy
+        run: .venv/bin/python -m unittest discover -v
+
+      - name: Zbuduj pakiet DEB
+        run: bash scripts/build_linux_package.sh
+
+      - name: Udostępnij pakiet do pobrania
+        uses: actions/upload-artifact@v4
+        with:
+          name: nifc-sync-linux-deb
+          path: dist/*.deb
+          if-no-files-found: error
