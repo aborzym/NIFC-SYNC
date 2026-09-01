@@ -22,6 +22,7 @@ class ScanDownloadRequest:
     destination_folder: Path
     download_info: object
     provider: object
+    is_incomplete: bool
 
 
 @dataclass(frozen=True)
@@ -99,8 +100,15 @@ def plan_scans(
             ),
         )
         destination_folder = target_folders[primary_file["name"]]
+        is_incomplete = (
+            validate_scan_manifest(destination_folder / "skany")
+            is False
+        )
 
-        log("BRAK SKANÓW")
+        if is_incomplete:
+            log("SKANY SĄ NIEKOMPLETNE — WYMAGAJĄ NAPRAWY")
+        else:
+            log("BRAK SKANÓW")
         log(f"FOLDER DOCELOWY: {destination_folder.name}")
         log(f"URL-scan: {source['url']}")
 
@@ -136,6 +144,7 @@ def plan_scans(
             destination_folder=destination_folder,
             download_info=download_info,
             provider=provider,
+            is_incomplete=is_incomplete,
         )
 
         plans.append(request)
