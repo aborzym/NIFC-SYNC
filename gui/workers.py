@@ -44,8 +44,8 @@ class CatalogLoader(QObject):
 
             user = login_response.json()
             user_name = user.get("name", credentials["login"])
-            self.log.emit(f"Zalogowano jako: {user_name}")
 
+            self.log.emit("Pobieranie danych z NIFC…")
             files_response = client.get_files()
 
             if not files_response.ok:
