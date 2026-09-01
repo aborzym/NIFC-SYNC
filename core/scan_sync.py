@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+import shutil
 
 import requests
 
@@ -9,6 +11,7 @@ from core.scans import (
     get_part_number,
     get_scan_group_key,
 )
+from core.scan_manifest import validate_scan_manifest, write_scan_manifest
 
 
 @dataclass(frozen=True)
@@ -150,6 +153,19 @@ def download_scan_plans(
 
     for request in plans:
         log(f"\nPOBIERANIE: {request.download_info.filename}")
+        scans_folder = request.destination_folder / "skany"
+        backup_folder = None
+
+        if (
+            scans_folder.exists()
+            and validate_scan_manifest(scans_folder) is False
+        ):
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_folder = request.destination_folder / (
+                f".skany_incomplete_{timestamp}"
+            )
+            scans_folder.rename(backup_folder)
+            log("WYKRYTO NIEKOMPLETNY PAKIET — POBIERAM PONOWNIE")
 
         if progress_callback:
             provider_progress = (
@@ -171,14 +187,24 @@ def download_scan_plans(
                 request.destination_folder,
                 provider_progress,
             )
+            write_scan_manifest(
+                scans_folder,
+                request.source_url,
+                request.download_info.filename,
+            )
         except (
             requests.RequestException,
             OSError,
             ValueError,
         ) as error:
+            if backup_folder is not None and not scans_folder.exists():
+                backup_folder.rename(scans_folder)
             log("")
             log(f"NIE UDAŁO SIĘ POBRAĆ SKANÓW: {error}")
             continue
+
+        if backup_folder is not None:
+            shutil.rmtree(backup_folder, ignore_errors=True)
 
         downloaded_packages += 1
 
