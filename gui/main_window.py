@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QThread, Qt
+from PySide6.QtCore import QSettings, QThread, QTimer, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
-    QCheckBox,
+    QDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.workers import CatalogLoader, SyncWorker
+from gui.scan_dialog import ScanSelectionDialog
+from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
 
 
 class MainWindow(QMainWindow):
@@ -33,6 +34,10 @@ class MainWindow(QMainWindow):
         self.catalog_worker = None
         self.sync_thread = None
         self.sync_worker = None
+        self.scan_thread = None
+        self.scan_worker = None
+        self.pending_summary = None
+        self.pending_scan_plans = ()
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -50,15 +55,6 @@ class MainWindow(QMainWindow):
         self.sync_button.clicked.connect(
             self._start_synchronization
         )
-        self.download_scans_checkbox = QCheckBox(
-            "Pobieraj brakujące skany"
-        )
-        self.download_scans_checkbox.setChecked(False)
-
-        action_layout = QHBoxLayout()
-        action_layout.addWidget(self.download_scans_checkbox)
-        action_layout.addStretch()
-        main_layout.addLayout(action_layout)
         main_layout.addWidget(self.sync_button)
 
         self.progress_bar = QProgressBar()
@@ -316,9 +312,6 @@ class MainWindow(QMainWindow):
             selected_workflow=selected_workflow,
             available_workflows=list(self.workflows.values()),
             destination=self.destination_edit.text().strip(),
-            download_scans=(
-                self.download_scans_checkbox.isChecked()
-            ),
         )
         self.sync_worker.moveToThread(self.sync_thread)
 
@@ -357,7 +350,11 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(0, 0)
             self.progress_stage_label.setText("Pobieranie skanów…")
 
-    def _synchronization_completed(self, summary):
+    def _synchronization_completed(self, summary, scan_plans):
+        self.pending_summary = summary
+        self.pending_scan_plans = scan_plans
+
+    def _finish_synchronization(self, summary):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.log_view.append("\n────────────────────────────────")
@@ -387,6 +384,73 @@ class MainWindow(QMainWindow):
     def _sync_thread_finished(self):
         self.sync_thread = None
         self.sync_worker = None
+        if self.pending_summary is None:
+            self._set_controls_enabled(True)
+            self._update_sync_button()
+            return
+
+        QTimer.singleShot(0, self._offer_scan_downloads)
+
+    def _offer_scan_downloads(self):
+        summary = self.pending_summary
+        plans = self.pending_scan_plans
+        self.pending_summary = None
+        self.pending_scan_plans = ()
+
+        if not plans:
+            self._finish_synchronization(summary)
+            self._set_controls_enabled(True)
+            self._update_sync_button()
+            return
+
+        dialog = ScanSelectionDialog(plans, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.log_view.append("Pominięto pobieranie skanów.")
+            self._finish_synchronization(summary)
+            self._set_controls_enabled(True)
+            self._update_sync_button()
+            return
+
+        selected_plans = dialog.selected_plans()
+        self.pending_summary = summary
+        self._start_scan_download(selected_plans)
+
+    def _start_scan_download(self, plans):
+        self.statusBar().showMessage("Pobieranie skanów…")
+        self.progress_stage_label.setText("Pobieranie skanów…")
+        self.scan_thread = QThread(self)
+        self.scan_worker = ScanDownloadWorker(plans)
+        self.scan_worker.moveToThread(self.scan_thread)
+
+        self.scan_thread.started.connect(self.scan_worker.run)
+        self.scan_worker.log.connect(self.log_view.append)
+        self.scan_worker.progress.connect(self._update_progress)
+        self.scan_worker.completed.connect(
+            self._scan_download_completed
+        )
+        self.scan_worker.failed.connect(
+            self._synchronization_failed
+        )
+        self.scan_worker.finished.connect(self.scan_thread.quit)
+        self.scan_worker.finished.connect(
+            self.scan_worker.deleteLater
+        )
+        self.scan_thread.finished.connect(
+            self.scan_thread.deleteLater
+        )
+        self.scan_thread.finished.connect(
+            self._scan_thread_finished
+        )
+        self.scan_thread.start()
+
+    def _scan_download_completed(self, downloaded_packages):
+        self.pending_summary["scan_packages"] = downloaded_packages
+        self._finish_synchronization(self.pending_summary)
+        self.pending_summary = None
+
+    def _scan_thread_finished(self):
+        self.scan_thread = None
+        self.scan_worker = None
         self._set_controls_enabled(True)
         self._update_sync_button()
 
@@ -396,7 +460,6 @@ class MainWindow(QMainWindow):
         self.xml_radio.setEnabled(enabled)
         self.destination_edit.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
-        self.download_scans_checkbox.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
 
     def _restore_settings(self):
@@ -409,14 +472,6 @@ class MainWindow(QMainWindow):
         destination = settings.value("sync/destination")
         if destination:
             self.destination_edit.setText(destination)
-
-        self.download_scans_checkbox.setChecked(
-            settings.value(
-                "sync/download_scans",
-                False,
-                type=bool,
-            )
-        )
 
         workflow_name = settings.value(
             "sync/workflow",
@@ -440,10 +495,6 @@ class MainWindow(QMainWindow):
             self.destination_edit.text().strip(),
         )
         settings.setValue(
-            "sync/download_scans",
-            self.download_scans_checkbox.isChecked(),
-        )
-        settings.setValue(
             "sync/workflow",
             self._selected_workflow_name(),
         )
@@ -452,6 +503,7 @@ class MainWindow(QMainWindow):
         threads = (
             self.catalog_thread,
             self.sync_thread,
+            self.scan_thread,
         )
         is_busy = any(
             thread is not None and thread.isRunning()
