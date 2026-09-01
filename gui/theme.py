@@ -32,6 +32,12 @@ QLabel#title {
     font-weight: 700;
 }
 
+QLabel#dialogTitle {
+    color: #f1f5f9;
+    font-size: 18px;
+    font-weight: 700;
+}
+
 QLabel#subtitle, QLabel#connectionStatus,
 QLabel#progressStage {
     color: #94a3b5;
@@ -103,6 +109,24 @@ QLineEdit, QTextEdit {
     border-radius: 8px;
     color: #d8e0ea;
     selection-background-color: #1e40af;
+}
+
+QTableWidget {
+    background-color: #0e141a;
+    alternate-background-color: #121a23;
+    border: 1px solid #344152;
+    border-radius: 8px;
+    gridline-color: #26313e;
+    color: #d8e0ea;
+}
+
+QHeaderView::section {
+    background-color: #1d2631;
+    color: #aebccd;
+    padding: 9px;
+    border: none;
+    border-bottom: 1px solid #344152;
+    font-weight: 600;
 }
 
 QLineEdit {
