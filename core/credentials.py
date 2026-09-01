@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import keyring
 from keyring.errors import KeyringError
@@ -13,7 +13,7 @@ class CredentialStoreError(RuntimeError):
 @dataclass(frozen=True)
 class NifcCredentials:
     username: str
-    password: str
+    password: str = field(repr=False)
 
 
 class CredentialStore:

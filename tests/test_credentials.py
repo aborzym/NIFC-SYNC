@@ -71,6 +71,12 @@ class CredentialStoreTest(unittest.TestCase):
         ):
             self.store.load("andrzej")
 
+    def test_does_not_expose_password_in_representation(self):
+        representation = repr(self.credentials)
+
+        self.assertNotIn("tajne-haslo", representation)
+        self.assertIn("andrzej", representation)
+
 
 if __name__ == "__main__":
     unittest.main()
