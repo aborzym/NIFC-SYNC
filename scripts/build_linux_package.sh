@@ -3,7 +3,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="3.0.0-beta.1"
+version="3.0.0-beta.2"
 package_name="nifc-sync_${version}_amd64.deb"
 package_root="${project_dir}/build/linux-package"
 application_dir="${package_root}/opt/nifc-sync"
@@ -42,6 +42,12 @@ cp -a "${project_dir}/dist/NIFC-SYNC/." "${application_dir}/"
 install -m 644 \
     "${project_dir}/packaging/linux/control" \
     "${package_root}/DEBIAN/control"
+install -m 755 \
+    "${project_dir}/packaging/linux/postinst" \
+    "${package_root}/DEBIAN/postinst"
+install -m 755 \
+    "${project_dir}/packaging/linux/postrm" \
+    "${package_root}/DEBIAN/postrm"
 install -m 644 \
     "${project_dir}/packaging/linux/nifc-sync.desktop" \
     "${package_root}/usr/share/applications/nifc-sync.desktop"
