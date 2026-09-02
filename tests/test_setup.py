@@ -117,6 +117,61 @@ class CompleteSetupTest(unittest.TestCase):
         )
         self.assertTrue(result.setup_completed)
 
+    def test_allows_marta_profile_without_general_destination(
+        self,
+    ):
+        organization_paths = (
+            OrganizationPath(
+                key="libraries/pl-sa/transcriptions",
+                path=Path("/tmp/przyszly-folder-sandomierz"),
+            ),
+        )
+        request = SetupRequest(
+            destination=None,
+            storage_kind="local",
+            username="marta",
+            password="tajne-haslo",
+            account_name="Marta",
+            organization_profile_id="marta-lawrence",
+            organization_paths=organization_paths,
+        )
+
+        result = complete_setup(
+            request,
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.assertIsNone(result.destination)
+        self.assertEqual(
+            result.organization_paths,
+            organization_paths,
+        )
+
+    def test_requires_at_least_one_path_for_marta_profile(
+        self,
+    ):
+        request = SetupRequest(
+            destination=None,
+            storage_kind="local",
+            username="marta",
+            password="tajne-haslo",
+            account_name="Marta",
+            organization_profile_id="marta-lawrence",
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "przynajmniej jeden folder biblioteki",
+        ):
+            complete_setup(
+                request,
+                self.configuration_store,
+                self.credential_store,
+            )
+
+        self.credential_store.save.assert_not_called()
+
     def test_saves_selected_organization_profile(self):
         request = SetupRequest(
             destination=self.destination,
