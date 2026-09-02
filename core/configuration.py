@@ -79,6 +79,38 @@ class ConfigurationStore:
         )
         self.settings.sync()
 
+    def create_account(
+        self,
+        name,
+        configuration=None,
+    ):
+        name = name.strip()
+
+        if not name:
+            raise ValueError("Nazwa konta nie może być pusta.")
+
+        account_id = self._create_account_record(name)
+        self._save_account_configuration(
+            account_id,
+            configuration or AppConfiguration(),
+        )
+        self.settings.sync()
+
+        return AccountInfo(
+            account_id=account_id,
+            name=name,
+        )
+
+    def set_active_account(self, account_id):
+        if account_id not in self._account_ids():
+            raise ValueError("Nie znaleziono konta.")
+
+        self.settings.setValue(
+            "accounts/active_id",
+            account_id,
+        )
+        self.settings.sync()
+
     def _account_ids(self):
         value = self.settings.value(
             "accounts/order",
@@ -129,89 +161,165 @@ class ConfigurationStore:
             )
         )
 
-    def load(self):
+    def _configuration_key(self, account_id, key):
+        if account_id is None:
+            return key
+
+        return f"accounts/{account_id}/{key}"
+
+    def _has_account_configuration(self, account_id):
+        return any(
+            self.settings.contains(
+                self._configuration_key(
+                    account_id,
+                    key,
+                )
+            )
+            for key in (
+                "sync/destination",
+                "storage/kind",
+                "storage/network_url",
+                "sync/workflow",
+                "naming/profile",
+                "credentials/username",
+                "setup/completed",
+            )
+        )
+
+    def _load_configuration(self, account_id):
         destination_value = self.settings.value(
-            "sync/destination",
+            self._configuration_key(
+                account_id,
+                "sync/destination",
+            ),
             "",
         )
         destination = Path(destination_value) if destination_value else None
 
-        configuration = AppConfiguration(
+        return AppConfiguration(
             destination=destination,
             storage_kind=self.settings.value(
-                "storage/kind",
+                self._configuration_key(
+                    account_id,
+                    "storage/kind",
+                ),
                 "local",
             ),
             network_url=str(
                 self.settings.value(
-                    "storage/network_url",
+                    self._configuration_key(
+                        account_id,
+                        "storage/network_url",
+                    ),
                     "",
                 )
                 or ""
             ),
             workflow=self.settings.value(
-                "sync/workflow",
+                self._configuration_key(
+                    account_id,
+                    "sync/workflow",
+                ),
                 "KRN-diplomatic",
             ),
             naming_profile=self.settings.value(
-                "naming/profile",
+                self._configuration_key(
+                    account_id,
+                    "naming/profile",
+                ),
                 "legacy-v3",
             ),
             nifc_username=str(
                 self.settings.value(
-                    "credentials/username",
+                    self._configuration_key(
+                        account_id,
+                        "credentials/username",
+                    ),
                     "",
                 )
                 or ""
             ),
             setup_completed=self.settings.value(
-                "setup/completed",
+                self._configuration_key(
+                    account_id,
+                    "setup/completed",
+                ),
                 False,
                 type=bool,
             ),
         )
-        if not self.active_account_id() and self._has_existing_configuration():
-            self._create_account_record(
-                configuration.nifc_username or "Dotychczasowe konto"
-            )
-            self.settings.sync()
 
-        return configuration
-
-    def save(self, configuration):
-        if not self.active_account_id():
-            self._create_account_record(configuration.nifc_username or "Konto 1")
-
+    def _save_account_configuration(
+        self,
+        account_id,
+        configuration,
+    ):
         destination = (
             str(configuration.destination) if configuration.destination else ""
         )
 
-        self.settings.setValue(
-            "sync/destination",
-            destination,
+        values = {
+            "sync/destination": destination,
+            "storage/kind": configuration.storage_kind,
+            "storage/network_url": configuration.network_url,
+            "sync/workflow": configuration.workflow,
+            "naming/profile": configuration.naming_profile,
+            "credentials/username": configuration.nifc_username,
+            "setup/completed": configuration.setup_completed,
+        }
+
+        for key, value in values.items():
+            self.settings.setValue(
+                self._configuration_key(
+                    account_id,
+                    key,
+                ),
+                value,
+            )
+
+    def load(self):
+        account_id = self.active_account_id()
+
+        if account_id:
+            if (
+                not self._has_account_configuration(account_id)
+                and self._has_existing_configuration()
+            ):
+                configuration = self._load_configuration(None)
+                self._save_account_configuration(
+                    account_id,
+                    configuration,
+                )
+                self.settings.sync()
+                return configuration
+
+            return self._load_configuration(account_id)
+
+        if not self._has_existing_configuration():
+            return AppConfiguration()
+
+        configuration = self._load_configuration(None)
+        account_id = self._create_account_record(
+            configuration.nifc_username or "Dotychczasowe konto"
         )
-        self.settings.setValue(
-            "storage/kind",
-            configuration.storage_kind,
+        self._save_account_configuration(
+            account_id,
+            configuration,
         )
-        self.settings.setValue(
-            "storage/network_url",
-            configuration.network_url,
-        )
-        self.settings.setValue(
-            "sync/workflow",
-            configuration.workflow,
-        )
-        self.settings.setValue(
-            "naming/profile",
-            configuration.naming_profile,
-        )
-        self.settings.setValue(
-            "credentials/username",
-            configuration.nifc_username,
-        )
-        self.settings.setValue(
-            "setup/completed",
-            configuration.setup_completed,
+        self.settings.sync()
+
+        return configuration
+
+    def save(self, configuration):
+        account_id = self.active_account_id()
+
+        if not account_id:
+            account_id = self._create_account_record(
+                configuration.nifc_username or "Konto 1"
+            )
+
+        self._save_account_configuration(
+            account_id,
+            configuration,
         )
         self.settings.sync()

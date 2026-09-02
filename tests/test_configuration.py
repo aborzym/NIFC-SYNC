@@ -132,6 +132,52 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertEqual(self.store.load(), updated)
         self.assertEqual(len(self.store.list_accounts()), 1)
 
+    def test_keeps_separate_configuration_for_each_account(self):
+        account_ids = iter(
+            (
+                "account-1",
+                "account-2",
+            )
+        )
+        store = ConfigurationStore(
+            self.settings,
+            id_factory=lambda: next(account_ids),
+        )
+        first_configuration = AppConfiguration(
+            destination=Path("/tmp/andrzej"),
+            workflow="KRN-diplomatic",
+            nifc_username="andrzej",
+            setup_completed=True,
+        )
+        second_configuration = AppConfiguration(
+            destination=Path("/tmp/barbara"),
+            workflow="XML",
+            nifc_username="barbara",
+            setup_completed=True,
+        )
+
+        store.save(first_configuration)
+        second_account = store.create_account(
+            "Barbara",
+            second_configuration,
+        )
+
+        self.assertEqual(
+            second_account.account_id,
+            "account-2",
+        )
+        self.assertEqual(
+            store.load(),
+            second_configuration,
+        )
+
+        store.set_active_account("account-1")
+
+        self.assertEqual(
+            store.load(),
+            first_configuration,
+        )
+
     def test_loads_version_3_settings(self):
         self.settings.setValue(
             "sync/destination",
@@ -167,6 +213,26 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertEqual(
             self.store.active_account_id(),
             "account-1",
+        )
+        self.assertEqual(
+            self.settings.value("accounts/account-1/sync/destination"),
+            "/home/user/mac_transkrypcje",
+        )
+        self.assertEqual(
+            self.settings.value("accounts/account-1/sync/workflow"),
+            "KRN-modern",
+        )
+
+        self.settings.setValue(
+            "sync/workflow",
+            "XML",
+        )
+
+        migrated_configuration = self.store.load()
+
+        self.assertEqual(
+            migrated_configuration.workflow,
+            "KRN-modern",
         )
 
 
