@@ -31,3 +31,15 @@ def library_display_name(library_id):
         normalized_id,
         normalized_id.upper(),
     )
+
+
+def library_transcriptions_path_key(library_id):
+    normalized_id = library_id.casefold()
+
+    return f"libraries/{normalized_id}/transcriptions"
+
+
+def library_scans_path_key(library_id):
+    normalized_id = library_id.casefold()
+
+    return f"libraries/{normalized_id}/scans"

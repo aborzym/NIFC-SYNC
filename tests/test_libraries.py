@@ -3,6 +3,8 @@ import unittest
 from core.libraries import (
     detect_library_id,
     library_display_name,
+    library_scans_path_key,
+    library_transcriptions_path_key,
 )
 
 
@@ -51,6 +53,16 @@ class LibrariesTest(unittest.TestCase):
         self.assertEqual(
             library_display_name("pl-xyz"),
             "PL-XYZ",
+        )
+
+    def test_builds_library_organization_path_keys(self):
+        self.assertEqual(
+            library_transcriptions_path_key("PL-SA"),
+            "libraries/pl-sa/transcriptions",
+        )
+        self.assertEqual(
+            library_scans_path_key("PL-SA"),
+            "libraries/pl-sa/scans",
         )
 
 

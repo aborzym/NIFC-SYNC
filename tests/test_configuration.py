@@ -118,6 +118,18 @@ class ConfigurationStoreTest(unittest.TestCase):
             "/tmp/Sandomierz.źródła",
         )
 
+        loaded = self.store.load()
+
+        self.assertEqual(
+            loaded.organization_path("libraries/pl-sa/transcriptions"),
+            Path("/tmp/Sandomierz.krn"),
+        )
+        self.assertEqual(
+            loaded.organization_path("libraries/pl-sa/scans"),
+            Path("/tmp/Sandomierz.źródła"),
+        )
+        self.assertIsNone(loaded.organization_path("libraries/pl-wtm/scans"))
+
     def test_renames_account(self):
         self.store.save(
             AppConfiguration(

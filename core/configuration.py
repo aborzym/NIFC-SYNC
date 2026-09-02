@@ -37,6 +37,13 @@ class AppConfiguration:
 
     setup_completed: bool = False
 
+    def organization_path(self, key):
+        for organization_path in self.organization_paths:
+            if organization_path.key == key:
+                return organization_path.path
+
+        return None
+
 
 class ConfigurationStore:
     def __init__(
