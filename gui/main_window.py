@@ -4,6 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QThread, QTimer
 from PySide6.QtGui import QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QFileDialog,
     QGroupBox,
@@ -118,6 +119,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Gotowy")
 
         self._restore_settings()
+        self._populate_account_selector()
         self.destination_edit.textChanged.connect(self._update_sync_button)
 
     def _create_header(self):
@@ -165,14 +167,20 @@ class MainWindow(QMainWindow):
         )
         self.connection_button.setEnabled(True)
         self.connection_button.clicked.connect(self._toggle_connection)
+        self.account_combo = QComboBox()
+        self.account_combo.setObjectName("accountSelector")
+        self.account_combo.setMinimumWidth(130)
+        self.account_combo.setMaximumWidth(180)
+        self.account_combo.currentIndexChanged.connect(self._change_active_account)
         self.settings_button = QPushButton("Ustawienia")
         self.settings_button.setObjectName("smallButton")
         self.settings_button.setFixedWidth(100)
         self.settings_button.clicked.connect(self._open_settings)
         layout.addWidget(self.brand_mark)
-        layout.addWidget(self.settings_button)
         layout.addLayout(title_layout)
         layout.addStretch()
+        layout.addWidget(self.account_combo)
+        layout.addWidget(self.settings_button)
         status_layout = QHBoxLayout()
         status_layout.setSpacing(6)
         status_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
@@ -595,20 +603,52 @@ class MainWindow(QMainWindow):
         self.xml_radio.setEnabled(enabled)
         self.destination_edit.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
+        self.account_combo.setEnabled(enabled)
         self.connection_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
 
-    def _restore_settings(self):
-        settings = QSettings()
+    def _populate_account_selector(self):
+        active_account_id = self.configuration_store.active_account_id()
 
-        geometry = settings.value("window/geometry")
-        if geometry is not None:
-            self.restoreGeometry(geometry)
+        self.account_combo.blockSignals(True)
+        self.account_combo.clear()
 
+        for account in self.configuration_store.list_accounts():
+            self.account_combo.addItem(
+                account.name,
+                account.account_id,
+            )
+
+        active_index = self.account_combo.findData(active_account_id)
+
+        if active_index >= 0:
+            self.account_combo.setCurrentIndex(active_index)
+
+        self.account_combo.blockSignals(False)
+
+    def _change_active_account(self, index):
+        account_id = self.account_combo.itemData(index)
+
+        if not account_id or account_id == self.configuration_store.active_account_id():
+            return
+
+        self._save_settings()
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        self.configuration_store.set_active_account(account_id)
         configuration = self.configuration_store.load()
+        self._apply_configuration(configuration)
+        self.log_view.append(f"Wybrano konto: {self.account_combo.currentText()}.")
 
-        if configuration.destination is not None:
-            self.destination_edit.setText(str(configuration.destination))
+    def _apply_configuration(self, configuration):
+        destination = (
+            str(configuration.destination)
+            if configuration.destination is not None
+            else ""
+        )
+        self.destination_edit.setText(destination)
 
         radio_buttons = {
             "KRN-diplomatic": self.diplomatic_radio,
@@ -619,6 +659,16 @@ class MainWindow(QMainWindow):
             configuration.workflow,
             self.diplomatic_radio,
         ).setChecked(True)
+
+    def _restore_settings(self):
+        settings = QSettings()
+
+        geometry = settings.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        configuration = self.configuration_store.load()
+        self._apply_configuration(configuration)
 
     def _save_settings(self):
         settings = QSettings()
