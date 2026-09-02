@@ -1,7 +1,9 @@
+import os
+import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -28,6 +30,7 @@ from core.setup import (
     complete_setup,
     verify_nifc_login,
 )
+from gui.network_dialog import NetworkBrowserDialog
 
 
 class FirstRunDialog(QDialog):
@@ -136,12 +139,10 @@ class FirstRunDialog(QDialog):
         network_layout.setContentsMargins(0, 0, 0, 0)
 
         self.network_url_edit = QLineEdit()
-        self.network_url_edit.setPlaceholderText(
-            "Adres udziału, np. smb://serwer/udział"
-        )
+        self.network_url_edit.setPlaceholderText("Adres wybranego udziału SMB")
         self.network_url_edit.setClearButtonEnabled(True)
 
-        self.network_connect_button = QPushButton("Połącz z udziałem")
+        self.network_connect_button = QPushButton("Przeglądaj sieć")
         self.network_connect_button.clicked.connect(self._connect_to_network_share)
 
         network_layout.addWidget(
@@ -176,6 +177,7 @@ class FirstRunDialog(QDialog):
         if configuration.destination is not None:
             self.destination_edit.setText(str(configuration.destination))
         self.network_url_edit.setText(configuration.network_url)
+        self.network_url_edit.setReadOnly(True)
         if configuration.storage_kind == "mounted":
             self.mounted_radio.setChecked(True)
 
@@ -198,23 +200,36 @@ class FirstRunDialog(QDialog):
             self.destination_edit.setText(selected_directory)
 
     def _connect_to_network_share(self):
-        url_value = self.network_url_edit.text().strip()
-        url = QUrl.fromUserInput(url_value)
+        dialog = NetworkBrowserDialog(self)
 
-        if not url_value or not url.isValid() or url.scheme().lower() != "smb":
-            QMessageBox.warning(
-                self,
-                "Nieprawidłowy adres udziału",
-                "Podaj adres rozpoczynający się od smb://",
-            )
+        if dialog.exec() != QDialog.Accepted:
             return
 
-        if not QDesktopServices.openUrl(url):
-            QMessageBox.warning(
-                self,
-                "Nie można otworzyć udziału",
-                "System nie obsłużył podanego adresu SMB.",
-            )
+        share = dialog.selected_share
+
+        if share is None:
+            return
+
+        self.network_url_edit.setText(share.uri)
+
+        if sys.platform == "darwin":
+            starting_directory = Path("/Volumes")
+        elif sys.platform.startswith("linux"):
+            starting_directory = Path("/run/user") / str(os.getuid()) / "gvfs"
+        else:
+            starting_directory = Path.home()
+
+        if not starting_directory.exists():
+            starting_directory = Path.home()
+
+        selected_directory = QFileDialog.getExistingDirectory(
+            self,
+            "Wybierz katalog w zamontowanym udziale",
+            str(starting_directory),
+        )
+
+        if selected_directory:
+            self.destination_edit.setText(selected_directory)
 
     def _set_network_options_visible(self, visible):
         top_left = self.frameGeometry().topLeft()

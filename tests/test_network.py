@@ -7,12 +7,70 @@ from core.network import (
     SmbResource,
     _run_gio,
     authenticate_smb,
+    connect_and_list_smb_shares,
     discover_smb_servers,
     list_smb_shares,
 )
 
 
 class SmbDiscoveryTest(unittest.TestCase):
+    @patch("core.network.list_smb_shares")
+    @patch("core.network.authenticate_smb")
+    def test_uses_existing_authenticated_connection(
+        self,
+        authenticate,
+        list_shares,
+    ):
+        expected = (
+            SmbResource(
+                display_name="TRANSKRYPCJE 2026",
+                uri="smb://mac/transkrypcje",
+            ),
+        )
+        list_shares.return_value = expected
+
+        result = connect_and_list_smb_shares(
+            "smb://mac/",
+            "Andrzej Borzym",
+            "tajne-haslo",
+        )
+
+        authenticate.assert_not_called()
+        self.assertEqual(result, expected)
+
+    @patch("core.network.list_smb_shares")
+    @patch("core.network.authenticate_smb")
+    def test_authenticates_when_connection_is_unavailable(
+        self,
+        authenticate,
+        list_shares,
+    ):
+        expected = (
+            SmbResource(
+                display_name="TRANSKRYPCJE 2026",
+                uri="smb://mac/transkrypcje",
+            ),
+        )
+        list_shares.side_effect = (
+            NetworkShareError("Brak połączenia."),
+            expected,
+        )
+
+        result = connect_and_list_smb_shares(
+            "smb://mac/",
+            "Andrzej Borzym",
+            "tajne-haslo",
+        )
+
+        authenticate.assert_called_once_with(
+            "smb://mac/",
+            "Andrzej Borzym",
+            "tajne-haslo",
+            "WORKGROUP",
+        )
+        self.assertEqual(result, expected)
+        self.assertEqual(list_shares.call_count, 2)
+
     @patch("core.network._run_gio")
     def test_discovers_only_smb_servers(self, run_gio):
         run_gio.return_value = (
@@ -57,10 +115,10 @@ class SmbDiscoveryTest(unittest.TestCase):
 
 
 class SmbAuthenticationTest(unittest.TestCase):
-    @patch("core.network._run_gio")
-    def test_passes_password_through_standard_input(
+    @patch("core.network._run_gio_mount")
+    def test_uses_interactive_terminal_mount(
         self,
-        run_gio,
+        run_gio_mount,
     ):
         authenticate_smb(
             "smb://mac.local/",
@@ -68,17 +126,18 @@ class SmbAuthenticationTest(unittest.TestCase):
             "tajne-haslo",
         )
 
-        arguments = run_gio.call_args.args[0]
-        input_text = run_gio.call_args.kwargs["input_text"]
-
-        self.assertNotIn("tajne-haslo", arguments)
-        self.assertEqual(
-            input_text,
-            ("Andrzej Borzym\nWORKGROUP\ntajne-haslo\n"),
+        run_gio_mount.assert_called_once_with(
+            "smb://mac.local/",
+            "Andrzej Borzym",
+            "tajne-haslo",
+            "WORKGROUP",
         )
 
-    @patch("core.network._run_gio")
-    def test_rejects_newline_in_credentials(self, run_gio):
+    @patch("core.network._run_gio_mount")
+    def test_rejects_newline_in_credentials(
+        self,
+        run_gio_mount,
+    ):
         with self.assertRaisesRegex(
             NetworkShareError,
             "niedozwolony znak",
@@ -89,7 +148,7 @@ class SmbAuthenticationTest(unittest.TestCase):
                 "tajne-haslo",
             )
 
-        run_gio.assert_not_called()
+        run_gio_mount.assert_not_called()
 
 
 class RunGioTest(unittest.TestCase):

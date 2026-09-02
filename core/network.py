@@ -1,7 +1,10 @@
+import os
 import re
 import subprocess
 from dataclasses import dataclass
 from urllib.parse import quote
+
+import pexpect
 
 
 class NetworkShareError(RuntimeError):
@@ -78,6 +81,70 @@ def discover_smb_servers():
     return tuple(resources)
 
 
+def _run_gio_mount(
+    uri,
+    username,
+    password,
+    domain,
+    timeout=60,
+):
+    environment = os.environ.copy()
+    environment["LANG"] = "C"
+    environment["LC_ALL"] = "C"
+
+    try:
+        child = pexpect.spawn(
+            "gio",
+            ["mount", uri],
+            encoding="utf-8",
+            timeout=timeout,
+            env=environment,
+        )
+    except pexpect.ExceptionPexpect:
+        raise NetworkShareError("Nie udało się uruchomić montowania GIO.") from None
+
+    user_prompt = r"User(?: \[[^\]]*\])?:"
+    domain_prompt = r"Domain(?: \[[^\]]*\])?:"
+    password_prompt = r"Password:"
+
+    try:
+        first_prompt = child.expect([user_prompt, pexpect.EOF])
+
+        if first_prompt == 0:
+            child.sendline(username)
+            child.expect(domain_prompt)
+            child.sendline(domain)
+            child.expect(password_prompt)
+            child.sendline(password)
+
+            result = child.expect(
+                [
+                    pexpect.EOF,
+                    user_prompt,
+                    password_prompt,
+                ]
+            )
+
+            if result != 0:
+                raise NetworkShareError("Logowanie do udziału SMB nie powiodło się.")
+
+        child.close()
+    except pexpect.TIMEOUT:
+        child.close(force=True)
+        raise NetworkShareError(
+            "Logowanie do udziału SMB przekroczyło limit czasu."
+        ) from None
+    except pexpect.EOF:
+        child.close(force=True)
+        raise NetworkShareError("Logowanie do udziału SMB nie powiodło się.") from None
+    finally:
+        if child.isalive():
+            child.close(force=True)
+
+    if child.exitstatus not in (0, None):
+        raise NetworkShareError("Logowanie do udziału SMB nie powiodło się.")
+
+
 def authenticate_smb(
     uri,
     username,
@@ -89,11 +156,11 @@ def authenticate_smb(
     if any("\n" in value or "\r" in value for value in values):
         raise NetworkShareError("Dane logowania zawierają niedozwolony znak.")
 
-    _run_gio(
-        ["mount", uri],
-        input_text=(f"{username}\n{domain}\n{password}\n"),
-        timeout=60,
-        error_message=("Logowanie do udziału SMB nie powiodło się."),
+    _run_gio_mount(
+        uri,
+        username,
+        password,
+        domain,
     )
 
 
@@ -132,6 +199,25 @@ def list_smb_shares(server_uri):
         )
 
     return tuple(resources)
+
+
+def connect_and_list_smb_shares(
+    server_uri,
+    username,
+    password,
+    domain="WORKGROUP",
+):
+    try:
+        return list_smb_shares(server_uri)
+    except NetworkShareError:
+        authenticate_smb(
+            server_uri,
+            username,
+            password,
+            domain,
+        )
+
+    return list_smb_shares(server_uri)
 
 
 def mount_smb_share(
