@@ -24,6 +24,7 @@ from core.setup import (
     SetupError,
     SetupRequest,
     complete_setup,
+    verify_nifc_login,
 )
 
 
@@ -172,11 +173,16 @@ class FirstRunDialog(QDialog):
         )
 
         try:
+            verify_nifc_login(
+                request.username,
+                request.password,
+            )
             self.completed_configuration = complete_setup(
                 request,
                 self.configuration_store,
                 self.credential_store,
             )
+
         except (SetupError, CredentialStoreError) as error:
             QMessageBox.warning(
                 self,

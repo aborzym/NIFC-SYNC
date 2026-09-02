@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
+from requests import RequestException
+
 from core.configuration import (
     AppConfiguration,
     ConfigurationStore,
@@ -15,6 +17,7 @@ from core.setup import (
     SetupError,
     SetupRequest,
     complete_setup,
+    verify_nifc_login,
 )
 
 
@@ -142,6 +145,74 @@ class CompleteSetupTest(unittest.TestCase):
         )
 
         self.assertNotIn("tajne-haslo", repr(request))
+
+
+class VerifyNifcLoginTest(unittest.TestCase):
+    def test_accepts_valid_credentials(self):
+        client = Mock()
+        client.login.return_value = Mock(
+            status_code=200,
+            ok=True,
+        )
+
+        verify_nifc_login(
+            "  andrzej  ",
+            "tajne-haslo",
+            client,
+        )
+
+        client.login.assert_called_once_with(
+            "andrzej",
+            "tajne-haslo",
+        )
+
+    def test_rejects_invalid_credentials(self):
+        client = Mock()
+        client.login.return_value = Mock(
+            status_code=401,
+            ok=False,
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "Nieprawidłowy login lub hasło",
+        ):
+            verify_nifc_login(
+                "andrzej",
+                "złe-hasło",
+                client,
+            )
+
+    def test_reports_server_error(self):
+        client = Mock()
+        client.login.return_value = Mock(
+            status_code=500,
+            ok=False,
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "HTTP 500",
+        ):
+            verify_nifc_login(
+                "andrzej",
+                "tajne-haslo",
+                client,
+            )
+
+    def test_reports_connection_error(self):
+        client = Mock()
+        client.login.side_effect = RequestException()
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "Nie udało się połączyć",
+        ):
+            verify_nifc_login(
+                "andrzej",
+                "tajne-haslo",
+                client,
+            )
 
 
 if __name__ == "__main__":
