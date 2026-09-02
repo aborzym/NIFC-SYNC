@@ -203,6 +203,9 @@ class FirstRunDialog(QDialog):
         show_library_paths = profile_id == "marta-lawrence"
         self.library_paths_group.setVisible(show_library_paths)
 
+        if hasattr(self, "storage_group"):
+            self._update_storage_labels(profile_id)
+
         if self.isVisible():
             top_left = self.frameGeometry().topLeft()
             QTimer.singleShot(
@@ -321,15 +324,34 @@ class FirstRunDialog(QDialog):
         if selected_directory:
             edit.setText(selected_directory)
 
-    def _create_storage_group(self):
-        group = QGroupBox("Katalog roboczy")
-        layout = QVBoxLayout(group)
+    def _update_storage_labels(self, profile_id):
+        if profile_id == "marta-lawrence":
+            self.storage_group.setTitle("Folder nadrzędny")
+            self.destination_edit.setPlaceholderText("Folder nadrzędny, np. Pulpit")
+            self.destination_edit.setToolTip(
+                "<b>Folder nadrzędny</b><br>"
+                "W nim będą umieszczane skonfigurowane "
+                "foldery bibliotek.<br><br>"
+                "Sam wybór tego folderu nie tworzy "
+                "katalogów transkrypcji ani skanów."
+            )
+            return
 
+        self.storage_group.setTitle("Katalog roboczy")
+        self.destination_edit.setPlaceholderText("Katalog docelowy")
+        self.destination_edit.setToolTip("")
+
+    def _create_storage_group(self):
+        self.storage_group = QGroupBox("Katalog roboczy")
+        layout = QVBoxLayout(self.storage_group)
         storage_types = QHBoxLayout()
         self.local_radio = QRadioButton("Katalog lokalny")
-        self.mounted_radio = QRadioButton("Katalog sieciowy / udział SMB")
-        self.local_radio.setChecked(True)
+        self.local_radio.setMinimumWidth(155)
 
+        self.mounted_radio = QRadioButton("Katalog sieciowy / udział SMB")
+        self.mounted_radio.setMinimumWidth(230)
+
+        self.local_radio.setChecked(True)
         storage_types.addWidget(self.local_radio)
         storage_types.addWidget(self.mounted_radio)
         storage_types.addStretch()
@@ -370,7 +392,9 @@ class FirstRunDialog(QDialog):
         layout.addLayout(destination_row)
 
         self.mounted_radio.toggled.connect(self._set_network_options_visible)
-        return group
+        self._update_storage_labels(self.organization_profile_combo.currentData())
+
+        return self.storage_group
 
     def _restore_values(self, suggested_credentials):
         configuration = self.configuration_store.load()
