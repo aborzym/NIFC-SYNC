@@ -7,6 +7,7 @@ from core.client import NifcClient
 from core.configuration import (
     AppConfiguration,
     ConfigurationStore,
+    OrganizationPath,
     StorageKind,
 )
 from core.credentials import (
@@ -31,6 +32,7 @@ class SetupRequest:
     password: str = field(repr=False)
     account_name: str = ""
     organization_profile_id: str = "andrzej-borzym"
+    organization_paths: tuple[OrganizationPath, ...] = ()
     network_url: str = ""
 
 
@@ -111,6 +113,7 @@ def complete_setup(
             request.network_url.strip() if request.storage_kind == "mounted" else ""
         ),
         naming_profile=organization_profile.profile_id,
+        organization_paths=request.organization_paths,
         nifc_username=username,
         setup_completed=True,
     )

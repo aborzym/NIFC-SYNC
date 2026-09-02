@@ -8,6 +8,7 @@ from requests import RequestException
 from core.configuration import (
     AppConfiguration,
     ConfigurationStore,
+    OrganizationPath,
 )
 from core.credentials import (
     CredentialStore,
@@ -124,6 +125,16 @@ class CompleteSetupTest(unittest.TestCase):
             password="tajne-haslo",
             account_name="Marta",
             organization_profile_id="marta-lawrence",
+            organization_paths=(
+                OrganizationPath(
+                    key="libraries/pl-sa/transcriptions",
+                    path=Path("/tmp/Sandomierz.krn"),
+                ),
+                OrganizationPath(
+                    key="libraries/pl-sa/scans",
+                    path=Path("/tmp/Sandomierz.źródła"),
+                ),
+            ),
         )
 
         result = complete_setup(
@@ -135,6 +146,11 @@ class CompleteSetupTest(unittest.TestCase):
         self.assertEqual(
             result.naming_profile,
             "marta-lawrence",
+        )
+
+        self.assertEqual(
+            result.organization_paths,
+            request.organization_paths,
         )
 
     def test_rejects_unknown_organization_profile(self):
