@@ -79,6 +79,40 @@ class ConfigurationStoreTest(unittest.TestCase):
             "account-1",
         )
 
+    def test_renames_account(self):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+
+        self.store.rename_account(
+            "account-1",
+            "  Andrzej  ",
+        )
+
+        accounts = self.store.list_accounts()
+
+        self.assertEqual(accounts[0].name, "Andrzej")
+
+    def test_rejects_empty_account_name(self):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "nie może być pusta",
+        ):
+            self.store.rename_account(
+                "account-1",
+                "   ",
+            )
+
     def test_loads_version_3_settings(self):
         self.settings.setValue(
             "sync/destination",

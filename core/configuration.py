@@ -64,6 +64,21 @@ class ConfigurationStore:
 
         return tuple(accounts)
 
+    def rename_account(self, account_id, name):
+        name = name.strip()
+
+        if not name:
+            raise ValueError("Nazwa konta nie może być pusta.")
+
+        if account_id not in self._account_ids():
+            raise ValueError("Nie znaleziono konta.")
+
+        self.settings.setValue(
+            f"accounts/{account_id}/name",
+            name,
+        )
+        self.settings.sync()
+
     def _account_ids(self):
         value = self.settings.value(
             "accounts/order",
