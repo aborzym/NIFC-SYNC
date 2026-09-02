@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QDialog,
@@ -36,6 +36,7 @@ class FirstRunDialog(QDialog):
         configuration_store=None,
         credential_store=None,
         suggested_credentials=None,
+        initial_setup=True,
         parent=None,
     ):
         super().__init__(parent)
@@ -43,15 +44,21 @@ class FirstRunDialog(QDialog):
         self.configuration_store = configuration_store or ConfigurationStore()
         self.credential_store = credential_store or CredentialStore()
         self.completed_configuration = None
-
-        self.setWindowTitle("Pierwsza konfiguracja NIFC-SYNC")
-        self.setMinimumSize(620, 540)
+        self.initial_setup = initial_setup
+        self.setWindowTitle(
+            "Pierwsza konfiguracja NIFC-SYNC"
+            if initial_setup
+            else "Ustawienia NIFC-SYNC"
+        )
+        self.setMinimumWidth(620)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
 
-        title = QLabel("Skonfiguruj NIFC-SYNC")
+        title = QLabel(
+            "Skonfiguruj NIFC-SYNC" if initial_setup else "Ustawienia NIFC-SYNC"
+        )
         title_font = title.font()
         title_font.setPointSize(title_font.pointSize() + 3)
         title_font.setBold(True)
@@ -59,9 +66,15 @@ class FirstRunDialog(QDialog):
         layout.addWidget(title)
 
         description = QLabel(
-            "Dane logowania zostaną zapisane w systemowym "
-            "magazynie haseł. Istniejące foldery nie będą "
-            "zmieniane ani przenoszone."
+            (
+                "Dane logowania zostaną zapisane w systemowym "
+                "magazynie haseł. Istniejące foldery nie będą "
+                "zmieniane ani przenoszone."
+            )
+            if initial_setup
+            else (
+                "Zmień konto NIFC, katalog roboczy lub konfigurację udziału sieciowego."
+            )
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -71,7 +84,9 @@ class FirstRunDialog(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         save_button = buttons.button(QDialogButtonBox.Save)
-        save_button.setText("Zapisz i kontynuuj")
+        save_button.setText(
+            "Zapisz i kontynuuj" if initial_setup else "Zapisz ustawienia"
+        )
         save_button.setIcon(QIcon())
         save_button.setObjectName("primaryButton")
 
@@ -152,8 +167,7 @@ class FirstRunDialog(QDialog):
         destination_row.addWidget(browse_button)
         layout.addLayout(destination_row)
 
-        self.mounted_radio.toggled.connect(self.network_options.setVisible)
-
+        self.mounted_radio.toggled.connect(self._set_network_options_visible)
         return group
 
     def _restore_values(self, suggested_credentials):
@@ -201,6 +215,20 @@ class FirstRunDialog(QDialog):
                 "Nie można otworzyć udziału",
                 "System nie obsłużył podanego adresu SMB.",
             )
+
+    def _set_network_options_visible(self, visible):
+        top_left = self.frameGeometry().topLeft()
+        self.network_options.setVisible(visible)
+
+        if self.isVisible():
+            QTimer.singleShot(
+                0,
+                lambda: self._resize_from_top(top_left),
+            )
+
+    def _resize_from_top(self, top_left):
+        self.adjustSize()
+        self.move(top_left)
 
     def _selected_storage_kind(self):
         if self.mounted_radio.isChecked():

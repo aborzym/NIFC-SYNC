@@ -25,6 +25,7 @@ from core.credentials import (
     CredentialStore,
     CredentialStoreError,
 )
+from gui.first_run_dialog import FirstRunDialog
 from gui.scan_dialog import ScanSelectionDialog
 from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
 
@@ -161,8 +162,12 @@ class MainWindow(QMainWindow):
         )
         self.connection_button.setEnabled(False)
         self.connection_button.clicked.connect(self._toggle_connection)
-
+        self.settings_button = QPushButton("Ustawienia")
+        self.settings_button.setObjectName("smallButton")
+        self.settings_button.setFixedWidth(100)
+        self.settings_button.clicked.connect(self._open_settings)
         layout.addWidget(self.brand_mark)
+        layout.addWidget(self.settings_button)
         layout.addLayout(title_layout)
         layout.addStretch()
         status_layout = QHBoxLayout()
@@ -215,6 +220,53 @@ class MainWindow(QMainWindow):
 
         if selected_directory:
             self.destination_edit.setText(selected_directory)
+
+    def _open_settings(self):
+        if any(
+            thread is not None
+            for thread in (
+                self.catalog_thread,
+                self.sync_thread,
+                self.scan_thread,
+            )
+        ):
+            QMessageBox.information(
+                self,
+                "Operacja w toku",
+                "Poczekaj na zakończenie bieżącej operacji.",
+            )
+            return
+
+        configuration = self.configuration_store.load()
+
+        try:
+            credentials = self.credential_store.load(configuration.nifc_username)
+        except CredentialStoreError as error:
+            QMessageBox.warning(
+                self,
+                "Nie można odczytać danych logowania",
+                str(error),
+            )
+            return
+
+        dialog = FirstRunDialog(
+            configuration_store=self.configuration_store,
+            credential_store=self.credential_store,
+            suggested_credentials=credentials,
+            initial_setup=False,
+            parent=self,
+        )
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        configuration = dialog.completed_configuration
+        self.destination_edit.setText(str(configuration.destination))
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        self.load_catalog()
 
     def show_ready_message(self):
         self.log_view.append("Interfejs uruchomiony.")
