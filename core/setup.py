@@ -13,6 +13,9 @@ from core.credentials import (
     CredentialStore,
     NifcCredentials,
 )
+from core.organization_profiles import (
+    get_organization_profile,
+)
 from core.storage import validate_storage
 
 
@@ -27,6 +30,7 @@ class SetupRequest:
     username: str
     password: str = field(repr=False)
     account_name: str = ""
+    organization_profile_id: str = "andrzej-borzym"
     network_url: str = ""
 
 
@@ -68,6 +72,11 @@ def complete_setup(
     username = request.username.strip()
     account_name = request.account_name.strip() or username
 
+    try:
+        organization_profile = get_organization_profile(request.organization_profile_id)
+    except ValueError:
+        raise SetupError("Wybierz prawidłowy profil organizacji plików.") from None
+
     if not username:
         raise SetupError("Podaj login NIFC.")
 
@@ -101,6 +110,7 @@ def complete_setup(
         network_url=(
             request.network_url.strip() if request.storage_kind == "mounted" else ""
         ),
+        naming_profile=organization_profile.profile_id,
         nifc_username=username,
         setup_completed=True,
     )

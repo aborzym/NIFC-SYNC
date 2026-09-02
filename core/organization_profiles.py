@@ -31,7 +31,8 @@ ORGANIZATION_PROFILES = (
         layout_kind="library-split",
         description=(
             "Pliki transkrypcji luzem według bibliotek; "
-            "skany zachowywane jako oryginalne archiwa."
+            "skany rozpakowywane do osobnych folderów "
+            "pakietów."
         ),
     ),
     OrganizationProfile(

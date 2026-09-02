@@ -116,6 +116,48 @@ class CompleteSetupTest(unittest.TestCase):
         )
         self.assertTrue(result.setup_completed)
 
+    def test_saves_selected_organization_profile(self):
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="marta",
+            password="tajne-haslo",
+            account_name="Marta",
+            organization_profile_id="marta-lawrence",
+        )
+
+        result = complete_setup(
+            request,
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.assertEqual(
+            result.naming_profile,
+            "marta-lawrence",
+        )
+
+    def test_rejects_unknown_organization_profile(self):
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="andrzej",
+            password="tajne-haslo",
+            organization_profile_id="profil-z-kosmosu",
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "profil organizacji",
+        ):
+            complete_setup(
+                request,
+                self.configuration_store,
+                self.credential_store,
+            )
+
+        self.credential_store.save.assert_not_called()
+
     @patch("core.setup.validate_storage")
     def test_saves_network_url_for_mounted_storage(
         self,

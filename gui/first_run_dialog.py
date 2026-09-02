@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -23,6 +24,9 @@ from core.configuration import ConfigurationStore
 from core.credentials import (
     CredentialStore,
     CredentialStoreError,
+)
+from core.organization_profiles import (
+    list_organization_profiles,
 )
 from core.setup import (
     SetupError,
@@ -99,6 +103,7 @@ class FirstRunDialog(QDialog):
         layout.addWidget(description)
 
         layout.addWidget(self._create_account_group())
+        layout.addWidget(self._create_organization_group())
         layout.addWidget(self._create_storage_group())
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
@@ -143,6 +148,46 @@ class FirstRunDialog(QDialog):
         layout.addWidget(self.password_edit)
 
         return group
+
+    def _create_organization_group(self):
+        group = QGroupBox("Organizacja plików")
+        layout = QVBoxLayout(group)
+
+        self.organization_profile_combo = QComboBox()
+
+        for profile in list_organization_profiles():
+            self.organization_profile_combo.addItem(
+                profile.display_name,
+                profile.profile_id,
+            )
+
+        self.organization_description = QLabel()
+        self.organization_description.setWordWrap(True)
+        self.organization_description.setObjectName("subtitle")
+
+        self.organization_profile_combo.currentIndexChanged.connect(
+            self._update_organization_description
+        )
+
+        layout.addWidget(self.organization_profile_combo)
+        layout.addWidget(self.organization_description)
+
+        self._update_organization_description(
+            self.organization_profile_combo.currentIndex()
+        )
+
+        return group
+
+    def _update_organization_description(self, index):
+        profile_id = self.organization_profile_combo.itemData(index)
+        description = ""
+
+        for profile in list_organization_profiles():
+            if profile.profile_id == profile_id:
+                description = profile.description
+                break
+
+        self.organization_description.setText(description)
 
     def _create_storage_group(self):
         group = QGroupBox("Katalog roboczy")
@@ -197,6 +242,13 @@ class FirstRunDialog(QDialog):
 
     def _restore_values(self, suggested_credentials):
         configuration = self.configuration_store.load()
+
+        profile_index = self.organization_profile_combo.findData(
+            configuration.naming_profile
+        )
+
+        if profile_index >= 0:
+            self.organization_profile_combo.setCurrentIndex(profile_index)
 
         active_account_id = self.configuration_store.active_account_id()
 
@@ -291,6 +343,7 @@ class FirstRunDialog(QDialog):
             username=self.username_edit.text(),
             password=self.password_edit.text(),
             account_name=self.account_name_edit.text(),
+            organization_profile_id=(self.organization_profile_combo.currentData()),
         )
 
         try:
