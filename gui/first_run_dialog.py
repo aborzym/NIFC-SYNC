@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from core.configuration import ConfigurationStore
@@ -43,7 +45,7 @@ class FirstRunDialog(QDialog):
         self.completed_configuration = None
 
         self.setWindowTitle("Pierwsza konfiguracja NIFC-SYNC")
-        self.setMinimumWidth(560)
+        self.setMinimumSize(620, 540)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -106,7 +108,7 @@ class FirstRunDialog(QDialog):
 
         storage_types = QHBoxLayout()
         self.local_radio = QRadioButton("Katalog lokalny")
-        self.mounted_radio = QRadioButton("Zamontowany udział sieciowy")
+        self.mounted_radio = QRadioButton("Katalog sieciowy / udział SMB")
         self.local_radio.setChecked(True)
 
         storage_types.addWidget(self.local_radio)
@@ -114,8 +116,30 @@ class FirstRunDialog(QDialog):
         storage_types.addStretch()
         layout.addLayout(storage_types)
 
+        self.network_options = QWidget()
+        network_layout = QHBoxLayout(self.network_options)
+        network_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.network_url_edit = QLineEdit()
+        self.network_url_edit.setPlaceholderText(
+            "Adres udziału, np. smb://serwer/udział"
+        )
+        self.network_url_edit.setClearButtonEnabled(True)
+
+        self.network_connect_button = QPushButton("Połącz z udziałem")
+        self.network_connect_button.clicked.connect(self._connect_to_network_share)
+
+        network_layout.addWidget(
+            self.network_url_edit,
+            stretch=1,
+        )
+        network_layout.addWidget(self.network_connect_button)
+        self.network_options.setVisible(False)
+        layout.addWidget(self.network_options)
+
         destination_row = QHBoxLayout()
         self.destination_edit = QLineEdit()
+        self.destination_edit.setPlaceholderText("Katalog docelowy")
         self.destination_edit.setClearButtonEnabled(True)
 
         browse_button = QPushButton("Wybierz…")
@@ -128,6 +152,8 @@ class FirstRunDialog(QDialog):
         destination_row.addWidget(browse_button)
         layout.addLayout(destination_row)
 
+        self.mounted_radio.toggled.connect(self.network_options.setVisible)
+
         return group
 
     def _restore_values(self, suggested_credentials):
@@ -135,7 +161,7 @@ class FirstRunDialog(QDialog):
 
         if configuration.destination is not None:
             self.destination_edit.setText(str(configuration.destination))
-
+        self.network_url_edit.setText(configuration.network_url)
         if configuration.storage_kind == "mounted":
             self.mounted_radio.setChecked(True)
 
@@ -157,6 +183,25 @@ class FirstRunDialog(QDialog):
         if selected_directory:
             self.destination_edit.setText(selected_directory)
 
+    def _connect_to_network_share(self):
+        url_value = self.network_url_edit.text().strip()
+        url = QUrl.fromUserInput(url_value)
+
+        if not url_value or not url.isValid() or url.scheme().lower() != "smb":
+            QMessageBox.warning(
+                self,
+                "Nieprawidłowy adres udziału",
+                "Podaj adres rozpoczynający się od smb://",
+            )
+            return
+
+        if not QDesktopServices.openUrl(url):
+            QMessageBox.warning(
+                self,
+                "Nie można otworzyć udziału",
+                "System nie obsłużył podanego adresu SMB.",
+            )
+
     def _selected_storage_kind(self):
         if self.mounted_radio.isChecked():
             return "mounted"
@@ -168,6 +213,7 @@ class FirstRunDialog(QDialog):
         request = SetupRequest(
             destination=(Path(destination_value) if destination_value else None),
             storage_kind=self._selected_storage_kind(),
+            network_url=self.network_url_edit.text(),
             username=self.username_edit.text(),
             password=self.password_edit.text(),
         )

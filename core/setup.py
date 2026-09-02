@@ -26,6 +26,7 @@ class SetupRequest:
     storage_kind: StorageKind
     username: str
     password: str = field(repr=False)
+    network_url: str = ""
 
 
 def verify_nifc_login(
@@ -91,6 +92,9 @@ def complete_setup(
         configuration_store.load(),
         destination=request.destination.expanduser().resolve(),
         storage_kind=request.storage_kind,
+        network_url=(
+            request.network_url.strip() if request.storage_kind == "mounted" else ""
+        ),
         nifc_username=username,
         setup_completed=True,
     )

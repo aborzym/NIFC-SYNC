@@ -11,6 +11,7 @@ StorageKind = Literal["local", "mounted"]
 class AppConfiguration:
     destination: Path | None = None
     storage_kind: StorageKind = "local"
+    network_url: str = ""
     workflow: str = "KRN-diplomatic"
     naming_profile: str = "legacy-v3"
     nifc_username: str = ""
@@ -33,6 +34,13 @@ class ConfigurationStore:
             storage_kind=self.settings.value(
                 "storage/kind",
                 "local",
+            ),
+            network_url=str(
+                self.settings.value(
+                    "storage/network_url",
+                    "",
+                )
+                or ""
             ),
             workflow=self.settings.value(
                 "sync/workflow",
@@ -68,6 +76,10 @@ class ConfigurationStore:
         self.settings.setValue(
             "storage/kind",
             configuration.storage_kind,
+        )
+        self.settings.setValue(
+            "storage/network_url",
+            configuration.network_url,
         )
         self.settings.setValue(
             "sync/workflow",

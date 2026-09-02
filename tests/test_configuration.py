@@ -31,6 +31,7 @@ class ConfigurationStoreTest(unittest.TestCase):
 
         self.assertIsNone(configuration.destination)
         self.assertEqual(configuration.storage_kind, "local")
+        self.assertEqual(configuration.network_url, "")
         self.assertEqual(
             configuration.workflow,
             "KRN-diplomatic",
@@ -46,6 +47,7 @@ class ConfigurationStoreTest(unittest.TestCase):
         expected = AppConfiguration(
             destination=Path("/tmp/nifc-sync"),
             storage_kind="mounted",
+            network_url="smb://mac.local/transkrypcje",
             workflow="XML",
             naming_profile="legacy-v3",
             nifc_username="andrzej",
@@ -77,6 +79,7 @@ class ConfigurationStoreTest(unittest.TestCase):
             "KRN-modern",
         )
         self.assertEqual(configuration.storage_kind, "local")
+        self.assertEqual(configuration.network_url, "")
         self.assertEqual(configuration.nifc_username, "")
         self.assertFalse(configuration.setup_completed)
 

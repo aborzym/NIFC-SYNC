@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from requests import RequestException
 
@@ -57,10 +57,38 @@ class CompleteSetupTest(unittest.TestCase):
             self.destination.resolve(),
         )
         self.assertEqual(result.storage_kind, "local")
+        self.assertEqual(result.network_url, "")
         self.assertEqual(result.workflow, "XML")
         self.assertEqual(result.nifc_username, "andrzej")
         self.assertTrue(result.setup_completed)
         self.configuration_store.save.assert_called_once_with(result)
+
+    @patch("core.setup.validate_storage")
+    def test_saves_network_url_for_mounted_storage(
+        self,
+        validate_storage_mock,
+    ):
+        validate_storage_mock.return_value = Mock(
+            is_valid=True,
+        )
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="mounted",
+            username="andrzej",
+            password="tajne-haslo",
+            network_url="  smb://mac.local/transkrypcje  ",
+        )
+
+        result = complete_setup(
+            request,
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.assertEqual(
+            result.network_url,
+            "smb://mac.local/transkrypcje",
+        )
 
     def test_rejects_empty_username(self):
         request = SetupRequest(
