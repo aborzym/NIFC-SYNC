@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -20,10 +21,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.configuration import ConfigurationStore
+from core.configuration import (
+    ConfigurationStore,
+    OrganizationPath,
+)
 from core.credentials import (
     CredentialStore,
     CredentialStoreError,
+)
+from core.libraries import (
+    library_scans_path_key,
+    library_transcriptions_path_key,
+    list_known_libraries,
 )
 from core.organization_profiles import (
     list_organization_profiles,
@@ -172,6 +181,9 @@ class FirstRunDialog(QDialog):
         layout.addWidget(self.organization_profile_combo)
         layout.addWidget(self.organization_description)
 
+        self.library_paths_group = self._create_library_paths_group()
+        layout.addWidget(self.library_paths_group)
+
         self._update_organization_description(
             self.organization_profile_combo.currentIndex()
         )
@@ -188,6 +200,126 @@ class FirstRunDialog(QDialog):
                 break
 
         self.organization_description.setText(description)
+        show_library_paths = profile_id == "marta-lawrence"
+        self.library_paths_group.setVisible(show_library_paths)
+
+        if self.isVisible():
+            top_left = self.frameGeometry().topLeft()
+            QTimer.singleShot(
+                0,
+                lambda: self._resize_from_top(top_left),
+            )
+
+    def _create_library_paths_group(self):
+        group = QGroupBox("Foldery bibliotek")
+        layout = QGridLayout(group)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(3, 1)
+
+        library_header = QLabel("Biblioteka")
+        transcriptions_header = QLabel("Folder transkrypcji")
+        scans_header = QLabel("Folder skanów")
+
+        layout.addWidget(library_header, 0, 0)
+        layout.addWidget(transcriptions_header, 0, 1)
+        layout.addWidget(scans_header, 0, 3)
+
+        self.organization_path_edits = {}
+
+        for row, (
+            library_id,
+            display_name,
+        ) in enumerate(
+            list_known_libraries(),
+            start=1,
+        ):
+            library_label = QLabel(display_name)
+
+            transcriptions_edit = QLineEdit()
+            transcriptions_edit.setPlaceholderText("Opcjonalnie")
+            transcriptions_edit.setClearButtonEnabled(True)
+            transcriptions_edit.setToolTip(
+                "<b>Folder transkrypcji</b><br>"
+                "Tutaj będą zapisywane transkrypcje "
+                f"biblioteki {display_name}.<br><br>"
+                "Pole jest opcjonalne.<br>"
+                "Folder zostanie utworzony dopiero przy "
+                "pierwszym zapisie pliku."
+            )
+
+            transcriptions_button = QPushButton("Wybierz…")
+            transcriptions_button.setToolTip(
+                "Wybierz istniejący folder "
+                "transkrypcji.<br>"
+                "Nową ścieżkę możesz wpisać ręcznie."
+            )
+
+            transcriptions_button.clicked.connect(
+                lambda _checked=False, edit=transcriptions_edit: (
+                    self._choose_organization_path(edit)
+                )
+            )
+
+            scans_edit = QLineEdit()
+            scans_edit.setPlaceholderText("Opcjonalnie")
+            scans_edit.setClearButtonEnabled(True)
+            scans_edit.setToolTip(
+                "<b>Folder skanów</b><br>"
+                "Tutaj będą zapisywane skany "
+                f"biblioteki {display_name}.<br><br>"
+                "Pole jest opcjonalne.<br>"
+                "Folder zostanie utworzony dopiero przy "
+                "pierwszym pobraniu skanów."
+            )
+
+            scans_button = QPushButton("Wybierz…")
+            scans_button.setToolTip(
+                "Wybierz istniejący folder skanów.<br>"
+                "Nową ścieżkę możesz wpisać ręcznie."
+            )
+
+            scans_button.clicked.connect(
+                lambda _checked=False, edit=scans_edit: self._choose_organization_path(
+                    edit
+                )
+            )
+
+            transcriptions_key = library_transcriptions_path_key(library_id)
+            scans_key = library_scans_path_key(library_id)
+            self.organization_path_edits[transcriptions_key] = transcriptions_edit
+            self.organization_path_edits[scans_key] = scans_edit
+
+            layout.addWidget(library_label, row, 0)
+            layout.addWidget(
+                transcriptions_edit,
+                row,
+                1,
+            )
+            layout.addWidget(
+                transcriptions_button,
+                row,
+                2,
+            )
+            layout.addWidget(scans_edit, row, 3)
+            layout.addWidget(scans_button, row, 4)
+
+        group.setVisible(False)
+        return group
+
+    def _choose_organization_path(self, edit):
+        starting_directory = (
+            edit.text().strip()
+            or self.destination_edit.text().strip()
+            or str(Path.home())
+        )
+        selected_directory = QFileDialog.getExistingDirectory(
+            self,
+            "Wybierz folder",
+            starting_directory,
+        )
+
+        if selected_directory:
+            edit.setText(selected_directory)
 
     def _create_storage_group(self):
         group = QGroupBox("Katalog roboczy")
@@ -249,6 +381,12 @@ class FirstRunDialog(QDialog):
 
         if profile_index >= 0:
             self.organization_profile_combo.setCurrentIndex(profile_index)
+
+        for organization_path in configuration.organization_paths:
+            edit = self.organization_path_edits.get(organization_path.key)
+
+            if edit is not None:
+                edit.setText(str(organization_path.path))
 
         active_account_id = self.configuration_store.active_account_id()
 
@@ -336,14 +474,24 @@ class FirstRunDialog(QDialog):
 
     def _complete_setup(self):
         destination_value = self.destination_edit.text().strip()
+        organization_paths = tuple(
+            OrganizationPath(
+                key=key,
+                path=Path(value),
+            )
+            for key, edit in (self.organization_path_edits.items())
+            if (value := edit.text().strip())
+        )
+
         request = SetupRequest(
             destination=(Path(destination_value) if destination_value else None),
             storage_kind=self._selected_storage_kind(),
-            network_url=self.network_url_edit.text(),
             username=self.username_edit.text(),
             password=self.password_edit.text(),
             account_name=self.account_name_edit.text(),
             organization_profile_id=(self.organization_profile_combo.currentData()),
+            organization_paths=organization_paths,
+            network_url=self.network_url_edit.text(),
         )
 
         try:
