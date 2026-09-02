@@ -1,10 +1,18 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 from PySide6.QtCore import QSettings
 
 StorageKind = Literal["local", "mounted"]
+
+
+@dataclass(frozen=True)
+class AccountInfo:
+    account_id: str
+    name: str
 
 
 @dataclass(frozen=True)
@@ -19,8 +27,92 @@ class AppConfiguration:
 
 
 class ConfigurationStore:
-    def __init__(self, settings=None):
+    def __init__(
+        self,
+        settings=None,
+        id_factory: Callable[[], str] | None = None,
+    ):
         self.settings = settings or QSettings()
+        self.id_factory = id_factory or (lambda: uuid4().hex)
+
+    def active_account_id(self):
+        return str(
+            self.settings.value(
+                "accounts/active_id",
+                "",
+            )
+            or ""
+        )
+
+    def list_accounts(self):
+        accounts = []
+
+        for account_id in self._account_ids():
+            name = str(
+                self.settings.value(
+                    f"accounts/{account_id}/name",
+                    "",
+                )
+                or ""
+            )
+            accounts.append(
+                AccountInfo(
+                    account_id=account_id,
+                    name=name,
+                )
+            )
+
+        return tuple(accounts)
+
+    def _account_ids(self):
+        value = self.settings.value(
+            "accounts/order",
+            [],
+        )
+
+        if not value:
+            return ()
+
+        if isinstance(value, str):
+            return (value,)
+
+        return tuple(str(account_id) for account_id in value)
+
+    def _create_account_record(self, name):
+        account_id = self.id_factory()
+        account_ids = [
+            *self._account_ids(),
+            account_id,
+        ]
+
+        self.settings.setValue(
+            "accounts/order",
+            account_ids,
+        )
+        self.settings.setValue(
+            "accounts/active_id",
+            account_id,
+        )
+        self.settings.setValue(
+            f"accounts/{account_id}/name",
+            name,
+        )
+
+        return account_id
+
+    def _has_existing_configuration(self):
+        return any(
+            self.settings.contains(key)
+            for key in (
+                "sync/destination",
+                "storage/kind",
+                "storage/network_url",
+                "sync/workflow",
+                "naming/profile",
+                "credentials/username",
+                "setup/completed",
+            )
+        )
 
     def load(self):
         destination_value = self.settings.value(
@@ -29,7 +121,7 @@ class ConfigurationStore:
         )
         destination = Path(destination_value) if destination_value else None
 
-        return AppConfiguration(
+        configuration = AppConfiguration(
             destination=destination,
             storage_kind=self.settings.value(
                 "storage/kind",
@@ -63,11 +155,20 @@ class ConfigurationStore:
                 type=bool,
             ),
         )
+        if not self.active_account_id() and self._has_existing_configuration():
+            self._create_account_record(
+                configuration.nifc_username or "Dotychczasowe konto"
+            )
+            self.settings.sync()
+
+        return configuration
 
     def save(self, configuration):
-        destination = (
-            str(configuration.destination) if configuration.destination else ""
-        )
+        if not self.active_account_id():
+            self._create_account_record(configuration.nifc_username or "Konto 1")
+            destination = (
+                str(configuration.destination) if configuration.destination else ""
+            )
 
         self.settings.setValue(
             "sync/destination",

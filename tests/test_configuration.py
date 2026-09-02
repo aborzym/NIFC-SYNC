@@ -18,7 +18,10 @@ class ConfigurationStoreTest(unittest.TestCase):
             str(settings_path),
             QSettings.IniFormat,
         )
-        self.store = ConfigurationStore(self.settings)
+        self.store = ConfigurationStore(
+            self.settings,
+            id_factory=lambda: "account-1",
+        )
 
     def tearDown(self):
         self.settings.clear()
@@ -58,6 +61,24 @@ class ConfigurationStoreTest(unittest.TestCase):
 
         self.assertEqual(self.store.load(), expected)
 
+    def test_creates_first_account_when_saving_configuration(self):
+        configuration = AppConfiguration(
+            nifc_username="andrzej",
+            setup_completed=True,
+        )
+
+        self.store.save(configuration)
+
+        accounts = self.store.list_accounts()
+
+        self.assertEqual(len(accounts), 1)
+        self.assertEqual(accounts[0].account_id, "account-1")
+        self.assertEqual(accounts[0].name, "andrzej")
+        self.assertEqual(
+            self.store.active_account_id(),
+            "account-1",
+        )
+
     def test_loads_version_3_settings(self):
         self.settings.setValue(
             "sync/destination",
@@ -82,6 +103,18 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertEqual(configuration.network_url, "")
         self.assertEqual(configuration.nifc_username, "")
         self.assertFalse(configuration.setup_completed)
+        accounts = self.store.list_accounts()
+
+        self.assertEqual(len(accounts), 1)
+        self.assertEqual(accounts[0].account_id, "account-1")
+        self.assertEqual(
+            accounts[0].name,
+            "Dotychczasowe konto",
+        )
+        self.assertEqual(
+            self.store.active_account_id(),
+            "account-1",
+        )
 
 
 if __name__ == "__main__":
