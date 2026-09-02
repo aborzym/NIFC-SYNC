@@ -20,13 +20,21 @@ class AccountInfo:
 
 
 @dataclass(frozen=True)
+class OrganizationPath:
+    key: str
+    path: Path
+
+
+@dataclass(frozen=True)
 class AppConfiguration:
     destination: Path | None = None
     storage_kind: StorageKind = "local"
     network_url: str = ""
     workflow: str = "KRN-diplomatic"
     naming_profile: str = "andrzej-borzym"
+    organization_paths: tuple[OrganizationPath, ...] = ()
     nifc_username: str = ""
+
     setup_completed: bool = False
 
 
@@ -171,6 +179,74 @@ class ConfigurationStore:
 
         return f"accounts/{account_id}/{key}"
 
+    def _organization_path_keys(self, account_id):
+        value = self.settings.value(
+            self._configuration_key(
+                account_id,
+                "organization/paths/keys",
+            ),
+            [],
+        )
+
+        if not value:
+            return ()
+
+        if isinstance(value, str):
+            return (value,)
+
+        return tuple(str(key) for key in value)
+
+    def _load_organization_paths(self, account_id):
+        paths = []
+
+        for key in self._organization_path_keys(account_id):
+            value = self.settings.value(
+                self._configuration_key(
+                    account_id,
+                    f"organization/paths/values/{key}",
+                ),
+                "",
+            )
+
+            if value:
+                paths.append(
+                    OrganizationPath(
+                        key=key,
+                        path=Path(str(value)),
+                    )
+                )
+
+        return tuple(paths)
+
+    def _save_organization_paths(
+        self,
+        account_id,
+        organization_paths,
+    ):
+        paths_group = self._configuration_key(
+            account_id,
+            "organization/paths",
+        )
+        self.settings.remove(paths_group)
+
+        keys = [organization_path.key for organization_path in organization_paths]
+        self.settings.setValue(
+            self._configuration_key(
+                account_id,
+                "organization/paths/keys",
+            ),
+            keys,
+        )
+
+        for organization_path in organization_paths:
+            self.settings.setValue(
+                self._configuration_key(
+                    account_id,
+                    (f"organization/paths/values/{organization_path.key}"),
+                ),
+                str(organization_path.path),
+            )
+
     def _has_account_configuration(self, account_id):
         return any(
             self.settings.contains(
@@ -238,6 +314,7 @@ class ConfigurationStore:
                     or "andrzej-borzym"
                 )
             ),
+            organization_paths=(self._load_organization_paths(account_id)),
             nifc_username=str(
                 self.settings.value(
                     self._configuration_key(
@@ -285,6 +362,11 @@ class ConfigurationStore:
                 ),
                 value,
             )
+
+        self._save_organization_paths(
+            account_id,
+            configuration.organization_paths,
+        )
 
     def load(self):
         account_id = self.active_account_id()

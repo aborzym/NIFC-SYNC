@@ -7,6 +7,7 @@ from PySide6.QtCore import QSettings
 from core.configuration import (
     AppConfiguration,
     ConfigurationStore,
+    OrganizationPath,
 )
 
 
@@ -77,6 +78,44 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertEqual(
             self.store.active_account_id(),
             "account-1",
+        )
+
+    def test_saves_organization_paths(self):
+        expected = AppConfiguration(
+            naming_profile="marta-lawrence",
+            organization_paths=(
+                OrganizationPath(
+                    key="libraries/pl-sa/transcriptions",
+                    path=Path("/tmp/Sandomierz.krn"),
+                ),
+                OrganizationPath(
+                    key="libraries/pl-sa/scans",
+                    path=Path("/tmp/Sandomierz.źródła"),
+                ),
+            ),
+            nifc_username="marta",
+            setup_completed=True,
+        )
+
+        self.store.save(expected)
+
+        self.assertEqual(
+            self.store.load(),
+            expected,
+        )
+        self.assertEqual(
+            self.settings.value(
+                "accounts/account-1/"
+                "organization/paths/values/"
+                "libraries/pl-sa/transcriptions"
+            ),
+            "/tmp/Sandomierz.krn",
+        )
+        self.assertEqual(
+            self.settings.value(
+                "accounts/account-1/organization/paths/values/libraries/pl-sa/scans"
+            ),
+            "/tmp/Sandomierz.źródła",
         )
 
     def test_renames_account(self):
