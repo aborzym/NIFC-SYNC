@@ -116,10 +116,14 @@ def download_and_extract(
     info: DownloadInfo,
     destination_folder: Path,
     progress_callback: (Callable[[int, int | None], None] | None) = None,
+    output_folder_name="skany",
 ) -> Path:
-    scans_folder = destination_folder / "skany"
-    problem_path = destination_folder / "problem.txt"
-
+    scans_folder = destination_folder / output_folder_name
+    problem_path = (
+        destination_folder / "problem.txt"
+        if output_folder_name == "skany"
+        else destination_folder / f"{output_folder_name}.problem.txt"
+    )
     if scans_folder.exists():
         raise FileExistsError(f"Folder już istnieje: {scans_folder}")
 

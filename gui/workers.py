@@ -1,5 +1,4 @@
 import subprocess
-from pathlib import Path
 
 import requests
 from PySide6.QtCore import QObject, Signal, Slot
@@ -87,12 +86,13 @@ class SyncWorker(QObject):
         self,
         selected_workflow,
         available_workflows,
-        destination,
+        configuration,
     ):
         super().__init__()
         self.selected_workflow = selected_workflow
         self.available_workflows = available_workflows
-        self.destination = Path(destination)
+        self.configuration = configuration
+        self.destination = configuration.destination
 
     @Slot()
     def run(self):
@@ -130,6 +130,7 @@ class SyncWorker(QObject):
                 self.destination,
                 inventory.folder_names,
                 inventory.next_number,
+                configuration=self.configuration,
                 log=self.log.emit,
             )
             self.progress.emit(65)
@@ -152,6 +153,7 @@ class SyncWorker(QObject):
                 inventory.existing_scans_by_url,
                 transcription_result.target_folders,
                 session,
+                configuration=self.configuration,
                 log=self.log.emit,
             )
             self.progress.emit(80)

@@ -6,7 +6,10 @@ from core.configuration import (
     AppConfiguration,
     OrganizationPath,
 )
-from core.destinations import resolve_asset_root
+from core.destinations import (
+    resolve_asset_root,
+    scan_package_folder_name,
+)
 
 
 class DestinationResolverTest(unittest.TestCase):
@@ -178,6 +181,34 @@ class DestinationResolverTest(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_builds_scan_package_folder_name(self):
+        self.assertEqual(
+            scan_package_folder_name("1483_Missa_in_D_DjVu.zip"),
+            "1483_Missa_in_D_DjVu",
+        )
+        self.assertEqual(
+            scan_package_folder_name("pakiet.ZIP"),
+            "pakiet",
+        )
+        self.assertEqual(
+            scan_package_folder_name("WTM-r2017"),
+            "WTM-r2017",
+        )
+
+    def test_rejects_unsafe_scan_package_folder_name(self):
+        for filename in (
+            "",
+            "../pakiet.zip",
+        ):
+            with (
+                self.subTest(filename=filename),
+                self.assertRaisesRegex(
+                    ValueError,
+                    "Nieprawidłowa nazwa",
+                ),
+            ):
+                scan_package_folder_name(filename)
 
 
 if __name__ == "__main__":

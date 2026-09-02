@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal
 
 from core.configuration import AppConfiguration
@@ -45,3 +46,19 @@ def resolve_asset_root(
         return None
 
     return configuration.destination / configured_path
+
+
+def scan_package_folder_name(filename):
+    filename = str(filename).strip()
+    safe_name = Path(filename).name
+
+    if not filename or safe_name != filename or safe_name in (".", ".."):
+        raise ValueError("Nieprawidłowa nazwa pakietu skanów.")
+
+    if safe_name.casefold().endswith(".zip"):
+        safe_name = safe_name[:-4]
+
+    if not safe_name:
+        raise ValueError("Nieprawidłowa nazwa pakietu skanów.")
+
+    return safe_name

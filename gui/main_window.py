@@ -448,6 +448,13 @@ class MainWindow(QMainWindow):
             self._catalog_failed("Nie wybrano rodzaju transkrypcji.")
             return
 
+        destination_value = self.destination_edit.text().strip()
+        configuration = replace(
+            self.configuration_store.load(),
+            destination=Path(destination_value),
+            workflow=self._selected_workflow_name(),
+        )
+
         self.log_view.clear()
         self.log_view.append(f"Synchronizacja: {selected_workflow['name']}")
         self.statusBar().showMessage("Synchronizacja…")
@@ -461,7 +468,7 @@ class MainWindow(QMainWindow):
         self.sync_worker = SyncWorker(
             selected_workflow=selected_workflow,
             available_workflows=list(self.workflows.values()),
-            destination=self.destination_edit.text().strip(),
+            configuration=configuration,
         )
         self.sync_worker.moveToThread(self.sync_thread)
 

@@ -1,17 +1,21 @@
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import shutil
 
 import requests
 
+from core.destinations import (
+    resolve_asset_root,
+    scan_package_folder_name,
+)
 from core.filesystem import format_file_size
+from core.scan_manifest import validate_scan_manifest, write_scan_manifest
 from core.scans import (
     find_scan_provider,
     get_part_number,
     get_scan_group_key,
 )
-from core.scan_manifest import validate_scan_manifest, write_scan_manifest
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,7 @@ class ScanDownloadRequest:
     download_info: object
     provider: object
     is_incomplete: bool
+    output_folder_name: str = "skany"
 
 
 @dataclass(frozen=True)
@@ -37,10 +42,14 @@ def plan_scans(
     existing_scans_by_url,
     target_folders,
     session,
+    configuration=None,
     log=print,
 ):
     plans = []
     selected_scan_groups = {}
+    is_marta_profile = (
+        configuration is not None and configuration.naming_profile == "marta-lawrence"
+    )
 
     log("\nKontrola skanów:")
 
@@ -99,26 +108,24 @@ def plan_scans(
                 api_file["name"],
             ),
         )
-        destination_folder = target_folders[primary_file["name"]]
-        is_incomplete = (
-            validate_scan_manifest(destination_folder / "skany")
-            is False
-        )
 
-        if is_incomplete:
-            log("SKANY SĄ NIEKOMPLETNE — WYMAGAJĄ NAPRAWY")
+        if is_marta_profile:
+            destination_folder = resolve_asset_root(
+                configuration,
+                primary_file["name"],
+                "scans",
+            )
+
+            if destination_folder is None:
+                log("BRAK SKONFIGUROWANEGO FOLDERU SKANÓW DLA BIBLIOTEKI — POMIJAM")
+                continue
         else:
-            log("BRAK SKANÓW")
-        log(f"FOLDER DOCELOWY: {destination_folder.name}")
-        log(f"URL-scan: {source['url']}")
+            destination_folder = target_folders[primary_file["name"]]
 
         provider = find_scan_provider(source["url"])
 
         if provider is None:
-            log(
-                "BRAK OBSŁUGI AUTOMATYCZNEGO POBIERANIA "
-                "DLA TEJ BIBLIOTEKI"
-            )
+            log("BRAK OBSŁUGI AUTOMATYCZNEGO POBIERANIA DLA TEJ BIBLIOTEKI")
             continue
 
         try:
@@ -133,6 +140,23 @@ def plan_scans(
             log(f"NIEPRAWIDŁOWY URL-scan: {error}")
             continue
 
+        output_folder_name = "skany"
+
+        if is_marta_profile:
+            output_folder_name = scan_package_folder_name(download_info.filename)
+
+        scans_folder = destination_folder / output_folder_name
+        is_incomplete = (
+            scans_folder.exists() and validate_scan_manifest(scans_folder) is False
+        )
+
+        if is_incomplete:
+            log("SKANY SĄ NIEKOMPLETNE — WYMAGAJĄ NAPRAWY")
+        else:
+            log("BRAK SKANÓW")
+
+        log(f"FOLDER DOCELOWY: {scans_folder}")
+        log(f"URL-scan: {source['url']}")
         log(f"PAKIET: {download_info.filename}")
         log(f"FORMAT: {download_info.content_type or 'nieznany'}")
         log(f"ROZMIAR: {format_file_size(download_info.size)}")
@@ -145,6 +169,7 @@ def plan_scans(
             download_info=download_info,
             provider=provider,
             is_incomplete=is_incomplete,
+            output_folder_name=output_folder_name,
         )
 
         plans.append(request)
@@ -162,28 +187,27 @@ def download_scan_plans(
 
     for request in plans:
         log(f"\nPOBIERANIE: {request.download_info.filename}")
-        scans_folder = request.destination_folder / "skany"
+        request.destination_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        scans_folder = request.destination_folder / request.output_folder_name
         backup_folder = None
 
-        if (
-            scans_folder.exists()
-            and validate_scan_manifest(scans_folder) is False
-        ):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if scans_folder.exists() and validate_scan_manifest(scans_folder) is False:
+            timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
             backup_folder = request.destination_folder / (
-                f".skany_incomplete_{timestamp}"
+                f".{request.output_folder_name}_incomplete_{timestamp}"
             )
             scans_folder.rename(backup_folder)
             log("WYKRYTO NIEKOMPLETNY PAKIET — POBIERAM PONOWNIE")
 
         if progress_callback:
-            provider_progress = (
-                lambda downloaded, total, request=request: (
-                    progress_callback(
-                        request,
-                        downloaded,
-                        total,
-                    )
+            provider_progress = lambda downloaded, total, request=request: (
+                progress_callback(
+                    request,
+                    downloaded,
+                    total,
                 )
             )
         else:
@@ -195,6 +219,7 @@ def download_scan_plans(
                 request.download_info,
                 request.destination_folder,
                 provider_progress,
+                output_folder_name=(request.output_folder_name),
             )
             write_scan_manifest(
                 scans_folder,
@@ -234,6 +259,7 @@ def sync_scans(
     session,
     should_download,
     progress_callback=None,
+    configuration=None,
     log=print,
 ):
     plans = plan_scans(
@@ -243,6 +269,7 @@ def sync_scans(
         existing_scans_by_url,
         target_folders,
         session,
+        configuration=configuration,
         log=log,
     )
     selected_plans = []
@@ -254,11 +281,9 @@ def sync_scans(
             log("POMIJAM POBIERANIE")
 
     if progress_callback:
-        adapted_progress = (
-            lambda request, downloaded, total: progress_callback(
-                downloaded,
-                total,
-            )
+        adapted_progress = lambda request, downloaded, total: progress_callback(
+            downloaded,
+            total,
         )
     else:
         adapted_progress = None
