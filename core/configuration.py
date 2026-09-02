@@ -6,6 +6,10 @@ from uuid import uuid4
 
 from PySide6.QtCore import QSettings
 
+from core.organization_profiles import (
+    normalize_organization_profile_id,
+)
+
 StorageKind = Literal["local", "mounted"]
 
 
@@ -21,7 +25,7 @@ class AppConfiguration:
     storage_kind: StorageKind = "local"
     network_url: str = ""
     workflow: str = "KRN-diplomatic"
-    naming_profile: str = "legacy-v3"
+    naming_profile: str = "andrzej-borzym"
     nifc_username: str = ""
     setup_completed: bool = False
 
@@ -222,12 +226,17 @@ class ConfigurationStore:
                 ),
                 "KRN-diplomatic",
             ),
-            naming_profile=self.settings.value(
-                self._configuration_key(
-                    account_id,
-                    "naming/profile",
-                ),
-                "legacy-v3",
+            naming_profile=normalize_organization_profile_id(
+                str(
+                    self.settings.value(
+                        self._configuration_key(
+                            account_id,
+                            "naming/profile",
+                        ),
+                        "andrzej-borzym",
+                    )
+                    or "andrzej-borzym"
+                )
             ),
             nifc_username=str(
                 self.settings.value(

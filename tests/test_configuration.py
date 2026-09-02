@@ -41,7 +41,7 @@ class ConfigurationStoreTest(unittest.TestCase):
         )
         self.assertEqual(
             configuration.naming_profile,
-            "legacy-v3",
+            "andrzej-borzym",
         )
         self.assertEqual(configuration.nifc_username, "")
         self.assertFalse(configuration.setup_completed)
@@ -52,7 +52,7 @@ class ConfigurationStoreTest(unittest.TestCase):
             storage_kind="mounted",
             network_url="smb://mac.local/transkrypcje",
             workflow="XML",
-            naming_profile="legacy-v3",
+            naming_profile="andrzej-borzym",
             nifc_username="andrzej",
             setup_completed=True,
         )
@@ -176,6 +176,27 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertEqual(
             store.load(),
             first_configuration,
+        )
+
+    def test_migrates_legacy_organization_profile_id(self):
+        self.settings.setValue(
+            "naming/profile",
+            "legacy-v3",
+        )
+        self.settings.setValue(
+            "setup/completed",
+            True,
+        )
+
+        configuration = self.store.load()
+
+        self.assertEqual(
+            configuration.naming_profile,
+            "andrzej-borzym",
+        )
+        self.assertEqual(
+            self.settings.value("accounts/account-1/naming/profile"),
+            "andrzej-borzym",
         )
 
     def test_loads_version_3_settings(self):
