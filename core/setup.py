@@ -85,23 +85,16 @@ def complete_setup(
     if not request.password:
         raise SetupError("Podaj hasło NIFC.")
 
-    uses_library_paths = organization_profile.profile_id == "marta-lawrence"
+    if request.destination is None:
+        raise SetupError("Wybierz główny katalog dla tego konta.")
 
-    if request.destination is None and not (
-        uses_library_paths and request.organization_paths
-    ):
-        raise SetupError(
-            "Wybierz katalog docelowy lub ustaw przynajmniej jeden folder biblioteki."
-        )
+    validation = validate_storage(
+        request.destination,
+        request.storage_kind,
+    )
 
-    if request.destination is not None:
-        validation = validate_storage(
-            request.destination,
-            request.storage_kind,
-        )
-
-        if not validation.is_valid:
-            raise SetupError(validation.message)
+    if not validation.is_valid:
+        raise SetupError(validation.message)
 
     credentials = NifcCredentials(
         username=username,
