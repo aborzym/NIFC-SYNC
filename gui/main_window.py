@@ -21,6 +21,10 @@ from PySide6.QtWidgets import (
 )
 
 from core.configuration import ConfigurationStore
+from core.credentials import (
+    CredentialStore,
+    CredentialStoreError,
+)
 from gui.scan_dialog import ScanSelectionDialog
 from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
 
@@ -30,6 +34,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.configuration_store = ConfigurationStore()
+        self.credential_store = CredentialStore()
         self.setWindowTitle("NIFC-SYNC 3.0")
         self.setMinimumSize(760, 560)
         self.workflows = {}
@@ -226,9 +231,24 @@ class MainWindow(QMainWindow):
         self.connection_label.style().unpolish(self.connection_label)
         self.connection_label.style().polish(self.connection_label)
         self._start_activity_indicator()
+        configuration = self.configuration_store.load()
+
+        try:
+            credentials = self.credential_store.load(configuration.nifc_username)
+        except CredentialStoreError as error:
+            self._catalog_failed(str(error))
+            self.connection_button.setEnabled(True)
+            return
+
+        if credentials is None:
+            self._catalog_failed(
+                "Nie znaleziono danych logowania w systemowym magazynie haseł."
+            )
+            self.connection_button.setEnabled(True)
+            return
 
         self.catalog_thread = QThread(self)
-        self.catalog_worker = CatalogLoader()
+        self.catalog_worker = CatalogLoader(credentials)
         self.catalog_worker.moveToThread(self.catalog_thread)
 
         self.catalog_thread.started.connect(self.catalog_worker.run)

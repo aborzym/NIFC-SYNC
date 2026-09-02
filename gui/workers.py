@@ -1,5 +1,5 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import requests
 from PySide6.QtCore import QObject, Signal, Slot
@@ -8,8 +8,8 @@ from core.catalog import (
     build_scan_indexes,
     get_available_workflows,
 )
-from core.client import NifcClient, load_credentials
 from core.cleanup import cleanup_scan_staging_folders
+from core.client import NifcClient
 from core.filesystem import format_file_size
 from core.inventory import build_storage_inventory
 from core.scan_sync import download_scan_plans, plan_scans
@@ -22,30 +22,31 @@ class CatalogLoader(QObject):
     failed = Signal(str)
     finished = Signal()
 
+    def __init__(self, credentials):
+        super().__init__()
+        self.credentials = credentials
+
     @Slot()
     def run(self):
         try:
             self.log.emit("Łączenie z NIFC…")
 
-            credentials = load_credentials(
-                Path.home() / ".nifccredentials"
-            )
             client = NifcClient()
 
             login_response = client.login(
-                credentials["login"],
-                credentials["password"],
+                self.credentials.username,
+                self.credentials.password,
             )
-
             if not login_response.ok:
                 raise RuntimeError(
-                    "Błąd logowania do NIFC "
-                    f"(HTTP {login_response.status_code})."
+                    f"Błąd logowania do NIFC (HTTP {login_response.status_code})."
                 )
 
             user = login_response.json()
-            user_name = user.get("name", credentials["login"])
-
+            user_name = user.get(
+                "name",
+                self.credentials.username,
+            )
             self.log.emit("Pobieranie danych…")
             files_response = client.get_files()
 
@@ -55,15 +56,10 @@ class CatalogLoader(QObject):
                     f"(HTTP {files_response.status_code})."
                 )
 
-            workflows = get_available_workflows(
-                files_response.json()
-            )
+            workflows = get_available_workflows(files_response.json())
 
             if not workflows:
-                raise RuntimeError(
-                    "NIFC nie zwrócił dostępnych rodzajów "
-                    "transkrypcji."
-                )
+                raise RuntimeError("NIFC nie zwrócił dostępnych rodzajów transkrypcji.")
 
             self.loaded.emit(workflows, user_name)
             self.log.emit("Pobrano dane z NIFC.")
@@ -108,18 +104,15 @@ class SyncWorker(QObject):
 
             if not self.destination.is_dir():
                 raise RuntimeError(
-                    "Katalog docelowy nie jest dostępny: "
-                    f"{self.destination}"
+                    f"Katalog docelowy nie jest dostępny: {self.destination}"
                 )
 
-            self.log.emit(
-                f"Katalog docelowy: {self.destination}"
-            )
+            self.log.emit(f"Katalog docelowy: {self.destination}")
 
             self.log.emit("Analiza danych z NIFC…")
             self.progress.emit(10)
-            scan_urls_by_group, scan_sources_by_url = (
-                build_scan_indexes(self.available_workflows)
+            scan_urls_by_group, scan_sources_by_url = build_scan_indexes(
+                self.available_workflows
             )
 
             self.log.emit("Inwentaryzacja katalogu docelowego…")
@@ -141,15 +134,10 @@ class SyncWorker(QObject):
             )
             self.progress.emit(65)
 
-            self.log.emit(
-                "Sprzątanie pozostałości dla wybranego rodzaju "
-                "transkrypcji…"
-            )
+            self.log.emit("Sprzątanie pozostałości dla wybranego rodzaju transkrypcji…")
             cleanup_scan_staging_folders(
                 self.destination,
-                project_folders=set(
-                    transcription_result.target_folders.values()
-                ),
+                project_folders=set(transcription_result.target_folders.values()),
                 log=self.log.emit,
             )
             self.progress.emit(70)
@@ -171,16 +159,14 @@ class SyncWorker(QObject):
             self.completed.emit(
                 {
                     "created": transcription_result.created_count,
-                    "downloaded": (
-                        transcription_result.downloaded_count
-                    ),
+                    "downloaded": (transcription_result.downloaded_count),
                     "skipped": transcription_result.skipped_count,
                     "scan_packages": 0,
                 },
                 scan_plans,
             )
 
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
@@ -210,7 +196,6 @@ class SyncWorker(QObject):
             raise RuntimeError(message)
 
 
-
 class ScanDownloadWorker(QObject):
     log = Signal(str)
     progress = Signal(int, str)
@@ -233,7 +218,7 @@ class ScanDownloadWorker(QObject):
                 log=self.log.emit,
             )
             self.completed.emit(result.downloaded_packages)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
@@ -244,15 +229,10 @@ class ScanDownloadWorker(QObject):
             package_fraction = min(downloaded / total, 1)
         else:
             package_fraction = 0
-        overall_fraction = (
-            package_index + package_fraction
-        ) / len(self.plans)
-        known_total = sum(
-            plan.download_info.size or 0 for plan in self.plans
-        )
+        overall_fraction = (package_index + package_fraction) / len(self.plans)
+        known_total = sum(plan.download_info.size or 0 for plan in self.plans)
         completed_size = sum(
-            plan.download_info.size or 0
-            for plan in self.plans[:package_index]
+            plan.download_info.size or 0 for plan in self.plans[:package_index]
         )
         downloaded_size = completed_size + downloaded
         if known_total:
