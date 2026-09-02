@@ -14,6 +14,10 @@ LIBRARY_DISPLAY_NAMES = {
 }
 
 
+def list_known_libraries():
+    return tuple(LIBRARY_DISPLAY_NAMES.items())
+
+
 def detect_library_id(filename):
     name = Path(filename).name
     match = LIBRARY_PREFIX_PATTERN.match(name)

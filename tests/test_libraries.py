@@ -5,6 +5,7 @@ from core.libraries import (
     library_display_name,
     library_scans_path_key,
     library_transcriptions_path_key,
+    list_known_libraries,
 )
 
 
@@ -63,6 +64,17 @@ class LibrariesTest(unittest.TestCase):
         self.assertEqual(
             library_scans_path_key("PL-SA"),
             "libraries/pl-sa/scans",
+        )
+
+    def test_lists_known_libraries_for_configuration(self):
+        self.assertEqual(
+            list_known_libraries(),
+            (
+                ("pl-wtm", "WTM"),
+                ("pl-sa", "Sandomierz"),
+                ("pl-cz", "Częstochowa"),
+                ("pl-kk", "Kraków"),
+            ),
         )
 
 
