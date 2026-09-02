@@ -181,9 +181,10 @@ class ConfigurationStore:
     def save(self, configuration):
         if not self.active_account_id():
             self._create_account_record(configuration.nifc_username or "Konto 1")
-            destination = (
-                str(configuration.destination) if configuration.destination else ""
-            )
+
+        destination = (
+            str(configuration.destination) if configuration.destination else ""
+        )
 
         self.settings.setValue(
             "sync/destination",

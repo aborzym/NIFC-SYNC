@@ -113,6 +113,25 @@ class ConfigurationStoreTest(unittest.TestCase):
                 "   ",
             )
 
+    def test_updates_existing_account_configuration(self):
+        initial = AppConfiguration(
+            destination=Path("/tmp/pierwszy"),
+            nifc_username="andrzej",
+            setup_completed=True,
+        )
+        updated = AppConfiguration(
+            destination=Path("/tmp/drugi"),
+            workflow="XML",
+            nifc_username="andrzej",
+            setup_completed=True,
+        )
+
+        self.store.save(initial)
+        self.store.save(updated)
+
+        self.assertEqual(self.store.load(), updated)
+        self.assertEqual(len(self.store.list_accounts()), 1)
+
     def test_loads_version_3_settings(self):
         self.settings.setValue(
             "sync/destination",
