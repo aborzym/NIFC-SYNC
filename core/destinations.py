@@ -33,4 +33,15 @@ def resolve_asset_root(
     else:
         raise ValueError(f"Nieznany rodzaj danych: {asset_kind}")
 
-    return configuration.organization_path(path_key)
+    configured_path = configuration.organization_path(path_key)
+
+    if configured_path is None:
+        return None
+
+    if configured_path.is_absolute():
+        return configured_path
+
+    if configuration.destination is None:
+        return None
+
+    return configuration.destination / configured_path

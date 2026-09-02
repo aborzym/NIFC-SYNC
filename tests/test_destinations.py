@@ -132,6 +132,53 @@ class DestinationResolverTest(unittest.TestCase):
                 "partytury",
             )
 
+    def test_resolves_relative_path_from_parent_directory(
+        self,
+    ):
+        parent = Path("/home/marta/Pulpit")
+        configuration = AppConfiguration(
+            destination=parent,
+            naming_profile="marta-lawrence",
+            organization_paths=(
+                OrganizationPath(
+                    key="libraries/pl-sa/transcriptions",
+                    path=Path("Sandomierz.krn"),
+                ),
+            ),
+        )
+
+        result = resolve_asset_root(
+            configuration,
+            "pl-sa--227_msza.krn",
+            "transcriptions",
+        )
+
+        self.assertEqual(
+            result,
+            parent / "Sandomierz.krn",
+        )
+
+    def test_rejects_relative_path_without_parent_directory(
+        self,
+    ):
+        configuration = AppConfiguration(
+            naming_profile="marta-lawrence",
+            organization_paths=(
+                OrganizationPath(
+                    key="libraries/pl-sa/scans",
+                    path=Path("Sandomierz.źródła"),
+                ),
+            ),
+        )
+
+        result = resolve_asset_root(
+            configuration,
+            "pl-sa--227_msza.krn",
+            "scans",
+        )
+
+        self.assertIsNone(result)
+
 
 if __name__ == "__main__":
     unittest.main()
