@@ -26,6 +26,7 @@ class SetupRequest:
     storage_kind: StorageKind
     username: str
     password: str = field(repr=False)
+    account_name: str = ""
     network_url: str = ""
 
 
@@ -62,8 +63,10 @@ def complete_setup(
     request: SetupRequest,
     configuration_store: ConfigurationStore,
     credential_store: CredentialStore,
+    create_new_account=False,
 ) -> AppConfiguration:
     username = request.username.strip()
+    account_name = request.account_name.strip() or username
 
     if not username:
         raise SetupError("Podaj login NIFC.")
@@ -88,8 +91,11 @@ def complete_setup(
     )
     credential_store.save(credentials)
 
+    base_configuration = (
+        AppConfiguration() if create_new_account else configuration_store.load()
+    )
     configuration = replace(
-        configuration_store.load(),
+        base_configuration,
         destination=request.destination.expanduser().resolve(),
         storage_kind=request.storage_kind,
         network_url=(
@@ -98,6 +104,20 @@ def complete_setup(
         nifc_username=username,
         setup_completed=True,
     )
-    configuration_store.save(configuration)
+
+    if create_new_account:
+        configuration_store.create_account(
+            account_name,
+            configuration,
+        )
+    else:
+        configuration_store.save(configuration)
+        account_id = configuration_store.active_account_id()
+
+        if account_id:
+            configuration_store.rename_account(
+                account_id,
+                account_name,
+            )
 
     return configuration

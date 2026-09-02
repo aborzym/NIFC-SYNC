@@ -40,6 +40,7 @@ class FirstRunDialog(QDialog):
         credential_store=None,
         suggested_credentials=None,
         initial_setup=True,
+        new_account=False,
         parent=None,
     ):
         super().__init__(parent)
@@ -48,10 +49,15 @@ class FirstRunDialog(QDialog):
         self.credential_store = credential_store or CredentialStore()
         self.completed_configuration = None
         self.initial_setup = initial_setup
+        self.new_account = new_account
         self.setWindowTitle(
-            "Pierwsza konfiguracja NIFC-SYNC"
-            if initial_setup
-            else "Ustawienia NIFC-SYNC"
+            "Dodaj konto NIFC-SYNC"
+            if new_account
+            else (
+                "Pierwsza konfiguracja NIFC-SYNC"
+                if initial_setup
+                else "Ustawienia NIFC-SYNC"
+            )
         )
         self.setMinimumWidth(620)
         self.setModal(True)
@@ -60,7 +66,9 @@ class FirstRunDialog(QDialog):
         layout.setSpacing(16)
 
         title = QLabel(
-            "Skonfiguruj NIFC-SYNC" if initial_setup else "Ustawienia NIFC-SYNC"
+            "Dodaj konto"
+            if new_account
+            else ("Skonfiguruj NIFC-SYNC" if initial_setup else "Ustawienia NIFC-SYNC")
         )
         title_font = title.font()
         title_font.setPointSize(title_font.pointSize() + 3)
@@ -68,17 +76,25 @@ class FirstRunDialog(QDialog):
         title.setFont(title_font)
         layout.addWidget(title)
 
-        description = QLabel(
-            (
+        if new_account:
+            description_text = (
+                "Podaj nazwę konta, dane logowania NIFC "
+                "oraz jego własny katalog roboczy."
+            )
+        elif initial_setup:
+            description_text = (
                 "Dane logowania zostaną zapisane w systemowym "
                 "magazynie haseł. Istniejące foldery nie będą "
                 "zmieniane ani przenoszone."
             )
-            if initial_setup
-            else (
-                "Zmień konto NIFC, katalog roboczy lub konfigurację udziału sieciowego."
+        else:
+            description_text = (
+                "Zmień nazwę konta, dane logowania NIFC, "
+                "katalog roboczy lub konfigurację udziału "
+                "sieciowego."
             )
-        )
+
+        description = QLabel(description_text)
         description.setWordWrap(True)
         layout.addWidget(description)
 
@@ -88,7 +104,9 @@ class FirstRunDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         save_button = buttons.button(QDialogButtonBox.Save)
         save_button.setText(
-            "Zapisz i kontynuuj" if initial_setup else "Zapisz ustawienia"
+            "Utwórz konto"
+            if new_account
+            else ("Zapisz i kontynuuj" if initial_setup else "Zapisz ustawienia")
         )
         save_button.setIcon(QIcon())
         save_button.setObjectName("primaryButton")
@@ -100,11 +118,16 @@ class FirstRunDialog(QDialog):
         buttons.accepted.connect(self._complete_setup)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self._restore_values(suggested_credentials)
+        if not self.new_account:
+            self._restore_values(suggested_credentials)
 
     def _create_account_group(self):
         group = QGroupBox("Konto NIFC")
         layout = QVBoxLayout(group)
+
+        self.account_name_edit = QLineEdit()
+        self.account_name_edit.setPlaceholderText("Nazwa konta, np. Andrzej")
+        self.account_name_edit.setClearButtonEnabled(True)
 
         self.username_edit = QLineEdit()
         self.username_edit.setPlaceholderText("Login")
@@ -115,6 +138,7 @@ class FirstRunDialog(QDialog):
         self.password_edit.setEchoMode(QLineEdit.Password)
         self.password_edit.setClearButtonEnabled(True)
 
+        layout.addWidget(self.account_name_edit)
         layout.addWidget(self.username_edit)
         layout.addWidget(self.password_edit)
 
@@ -173,6 +197,13 @@ class FirstRunDialog(QDialog):
 
     def _restore_values(self, suggested_credentials):
         configuration = self.configuration_store.load()
+
+        active_account_id = self.configuration_store.active_account_id()
+
+        for account in self.configuration_store.list_accounts():
+            if account.account_id == active_account_id:
+                self.account_name_edit.setText(account.name)
+                break
 
         if configuration.destination is not None:
             self.destination_edit.setText(str(configuration.destination))
@@ -259,6 +290,7 @@ class FirstRunDialog(QDialog):
             network_url=self.network_url_edit.text(),
             username=self.username_edit.text(),
             password=self.password_edit.text(),
+            account_name=self.account_name_edit.text(),
         )
 
         try:
@@ -270,6 +302,7 @@ class FirstRunDialog(QDialog):
                 request,
                 self.configuration_store,
                 self.credential_store,
+                create_new_account=self.new_account,
             )
 
         except (SetupError, CredentialStoreError) as error:

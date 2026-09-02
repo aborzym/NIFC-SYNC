@@ -272,7 +272,8 @@ class MainWindow(QMainWindow):
             return
 
         configuration = dialog.completed_configuration
-        self.destination_edit.setText(str(configuration.destination))
+        self._populate_account_selector()
+        self._apply_configuration(configuration)
 
         if self.workflows:
             self._disconnect_catalog()
@@ -618,6 +619,13 @@ class MainWindow(QMainWindow):
                 account.name,
                 account.account_id,
             )
+        if self.account_combo.count() > 0:
+            self.account_combo.insertSeparator(self.account_combo.count())
+
+        self.account_combo.addItem(
+            "Dodaj konto…",
+            "__add_account__",
+        )
 
         active_index = self.account_combo.findData(active_account_id)
 
@@ -628,6 +636,10 @@ class MainWindow(QMainWindow):
 
     def _change_active_account(self, index):
         account_id = self.account_combo.itemData(index)
+
+        if account_id == "__add_account__":
+            self._open_new_account()
+            return
 
         if not account_id or account_id == self.configuration_store.active_account_id():
             return
@@ -641,6 +653,31 @@ class MainWindow(QMainWindow):
         configuration = self.configuration_store.load()
         self._apply_configuration(configuration)
         self.log_view.append(f"Wybrano konto: {self.account_combo.currentText()}.")
+
+    def _open_new_account(self):
+        self._save_settings()
+
+        dialog = FirstRunDialog(
+            configuration_store=self.configuration_store,
+            credential_store=self.credential_store,
+            initial_setup=False,
+            new_account=True,
+            parent=self,
+        )
+
+        if dialog.exec() != QDialog.Accepted:
+            self._populate_account_selector()
+            return
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        configuration = dialog.completed_configuration
+        self._populate_account_selector()
+        self._apply_configuration(configuration)
+        self.log_view.append(
+            f"Utworzono i wybrano konto: {self.account_combo.currentText()}."
+        )
 
     def _apply_configuration(self, configuration):
         destination = (

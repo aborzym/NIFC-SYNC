@@ -63,6 +63,59 @@ class CompleteSetupTest(unittest.TestCase):
         self.assertTrue(result.setup_completed)
         self.configuration_store.save.assert_called_once_with(result)
 
+    def test_renames_current_account(self):
+        self.configuration_store.active_account_id.return_value = "account-1"
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="andrzej",
+            password="tajne-haslo",
+            account_name="  Andrzej  ",
+        )
+
+        complete_setup(
+            request,
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.configuration_store.rename_account.assert_called_once_with(
+            "account-1",
+            "Andrzej",
+        )
+
+    def test_creates_new_account_with_separate_configuration(self):
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="barbara",
+            password="tajne-haslo",
+            account_name="  Barbara  ",
+        )
+
+        result = complete_setup(
+            request,
+            self.configuration_store,
+            self.credential_store,
+            create_new_account=True,
+        )
+
+        self.configuration_store.load.assert_not_called()
+        self.configuration_store.save.assert_not_called()
+        self.configuration_store.create_account.assert_called_once_with(
+            "Barbara",
+            result,
+        )
+        self.assertEqual(
+            result.destination,
+            self.destination.resolve(),
+        )
+        self.assertEqual(
+            result.nifc_username,
+            "barbara",
+        )
+        self.assertTrue(result.setup_completed)
+
     @patch("core.setup.validate_storage")
     def test_saves_network_url_for_mounted_storage(
         self,
