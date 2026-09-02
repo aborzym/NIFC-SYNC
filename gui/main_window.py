@@ -146,12 +146,15 @@ class MainWindow(QMainWindow):
         title_layout.addWidget(title)
         title_layout.addWidget(subtitle)
 
-        self.connection_label = QLabel("Łączenie z NIFC…")
+        self.connection_label = QLabel("Nie połączono")
         self.connection_label.setObjectName("connectionStatus")
         self.connection_label.setProperty("connected", False)
         self.connection_dot = QLabel()
         self.connection_dot.setObjectName("connectionDot")
-        self.connection_dot.setProperty("state", "connecting")
+        self.connection_dot.setProperty(
+            "state",
+            "disconnected",
+        )
         self.connection_dot.setFixedSize(8, 8)
         self.connection_button = QPushButton("Połącz")
         self.connection_button.setObjectName("smallButton")
@@ -160,7 +163,7 @@ class MainWindow(QMainWindow):
             "connectionAction",
             "connect",
         )
-        self.connection_button.setEnabled(False)
+        self.connection_button.setEnabled(True)
         self.connection_button.clicked.connect(self._toggle_connection)
         self.settings_button = QPushButton("Ustawienia")
         self.settings_button.setObjectName("smallButton")
@@ -265,8 +268,7 @@ class MainWindow(QMainWindow):
 
         if self.workflows:
             self._disconnect_catalog()
-
-        self.load_catalog()
+            self.load_catalog()
 
     def show_ready_message(self):
         self.log_view.append("Interfejs uruchomiony.")
