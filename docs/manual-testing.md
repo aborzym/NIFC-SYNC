@@ -19,13 +19,18 @@
 - [ ] Ponowne pobranie i naprawa pakietu z uszkodzonym manifestem.
 - [ ] Dodanie drugiego konta i usunięcie go z listy kont.
 - [ ] Przełączenie na pozostałe konto po usunięciu aktywnego.
-- [ ] Zablokowanie próby usunięcia jedynego konta.
+- [ ] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
+- [ ] Zablokowanie utworzenia konta z loginem NIFC używanym przez inne konto.
+- [ ] Sprawdzenie, że konflikt loginu nie nadpisuje hasła w keyringu.
 - [ ] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
-- [ ] Zachowanie hasła, gdy ten sam login jest używany przez inne konto.
+- [ ] Zachowanie hasła dla starszej konfiguracji, gdy login jest współdzielony przez inne konto.
+- [ ] Wyświetlenie folderu docelowego w oknie wyboru skanów.
+- [ ] Dopasowanie wszystkich kolumn do szerokości okna bez poziomego przewijania.
+- [ ] Ręczna zmiana szerokości kolumn bez wypychania pozostałych poza tabelę.
 
 ## Wykonane na macOS
 
-- [x] Pełny zestaw 100 testów automatycznych na Pythonie 3.14.
+- [x] Pełny zestaw testów automatycznych na Pythonie 3.14.
 - [x] Uruchomienie konfiguratora pierwszego startu.
 - [x] Migracja dotychczasowych ustawień bez zapisywania hasła.
 - [x] Wyświetlenie profili Andrzej Borzym, Marta Lawrence i Andrzej Kubiczek.
