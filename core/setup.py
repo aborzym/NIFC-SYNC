@@ -88,6 +88,18 @@ def complete_setup(
     if request.destination is None:
         raise SetupError("Wybierz główny katalog dla tego konta.")
 
+    excluded_account_id = (
+        None if create_new_account else configuration_store.active_account_id()
+    )
+
+    try:
+        configuration_store.validate_account_name(
+            account_name,
+            excluded_account_id=excluded_account_id,
+        )
+    except ValueError as error:
+        raise SetupError(str(error)) from None
+
     validation = validate_storage(
         request.destination,
         request.storage_kind,

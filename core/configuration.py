@@ -94,7 +94,7 @@ class ConfigurationStore:
             for account_id in self._account_ids()
         )
 
-    def _validate_account_name(
+    def validate_account_name(
         self,
         name,
         excluded_account_id=None,
@@ -119,7 +119,7 @@ class ConfigurationStore:
         if account_id not in self._account_ids():
             raise ValueError("Nie znaleziono konta.")
 
-        name = self._validate_account_name(
+        name = self.validate_account_name(
             name,
             excluded_account_id=account_id,
         )
@@ -135,7 +135,7 @@ class ConfigurationStore:
         name,
         configuration=None,
     ):
-        name = self._validate_account_name(name)
+        name = self.validate_account_name(name)
         account_id = self._create_account_record(name)
         self._save_account_configuration(
             account_id,

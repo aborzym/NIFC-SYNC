@@ -23,6 +23,34 @@ from core.setup import (
 
 
 class CompleteSetupTest(unittest.TestCase):
+    def test_rejects_duplicate_account_before_saving_password(
+        self,
+    ):
+        self.configuration_store.validate_account_name.side_effect = ValueError(
+            "Konto o tej nazwie już istnieje."
+        )
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="andrzej",
+            password="tajne-haslo",
+            account_name="Andrzej",
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "już istnieje",
+        ):
+            complete_setup(
+                request,
+                self.configuration_store,
+                self.credential_store,
+                create_new_account=True,
+            )
+
+        self.credential_store.save.assert_not_called()
+        self.configuration_store.create_account.assert_not_called()
+
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.destination = Path(self.temporary_directory.name)
