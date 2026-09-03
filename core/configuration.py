@@ -120,6 +120,32 @@ class ConfigurationStore:
             name=name,
         )
 
+    def delete_account(self, account_id):
+        account_ids = list(self._account_ids())
+
+        if account_id not in account_ids:
+            raise ValueError("Nie znaleziono konta.")
+
+        if len(account_ids) == 1:
+            raise ValueError("Nie można usunąć jedynego konta.")
+
+        self.settings.remove(f"accounts/{account_id}")
+        account_ids.remove(account_id)
+        self.settings.setValue(
+            "accounts/order",
+            account_ids,
+        )
+
+        if self.active_account_id() == account_id:
+            self.settings.setValue(
+                "accounts/active_id",
+                account_ids[0],
+            )
+
+        self.settings.sync()
+
+        return self.active_account_id()
+
     def set_active_account(self, account_id):
         if account_id not in self._account_ids():
             raise ValueError("Nie znaleziono konta.")

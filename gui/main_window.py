@@ -617,22 +617,30 @@ class MainWindow(QMainWindow):
 
     def _populate_account_selector(self):
         active_account_id = self.configuration_store.active_account_id()
+        accounts = self.configuration_store.list_accounts()
 
         self.account_combo.blockSignals(True)
         self.account_combo.clear()
 
-        for account in self.configuration_store.list_accounts():
+        for account in accounts:
             self.account_combo.addItem(
                 account.name,
                 account.account_id,
             )
-        if self.account_combo.count() > 0:
+
+        if accounts:
             self.account_combo.insertSeparator(self.account_combo.count())
 
         self.account_combo.addItem(
             "Dodaj konto…",
             "__add_account__",
         )
+
+        if len(accounts) > 1:
+            self.account_combo.addItem(
+                "Usuń bieżące konto…",
+                "__delete_account__",
+            )
 
         active_index = self.account_combo.findData(active_account_id)
 
@@ -646,6 +654,10 @@ class MainWindow(QMainWindow):
 
         if account_id == "__add_account__":
             self._open_new_account()
+            return
+
+        if account_id == "__delete_account__":
+            self._delete_active_account()
             return
 
         if not account_id or account_id == self.configuration_store.active_account_id():
@@ -685,6 +697,53 @@ class MainWindow(QMainWindow):
         self.log_view.append(
             f"Utworzono i wybrano konto: {self.account_combo.currentText()}."
         )
+
+    def _delete_active_account(self):
+        accounts = self.configuration_store.list_accounts()
+        active_account_id = self.configuration_store.active_account_id()
+        active_account = next(
+            (
+                account
+                for account in accounts
+                if account.account_id == active_account_id
+            ),
+            None,
+        )
+
+        if active_account is None:
+            self._populate_account_selector()
+            return
+
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.NoIcon)
+        message_box.setWindowTitle("Usuń konto")
+        message_box.setText(
+            f"Czy usunąć konto „{active_account.name}” "
+            "wraz z jego ustawieniami?\n\n"
+            "Dane logowania pozostaną w systemowym "
+            "magazynie haseł."
+        )
+        message_box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        delete_button = message_box.button(QMessageBox.StandardButton.Yes)
+        cancel_button = message_box.button(QMessageBox.StandardButton.No)
+        delete_button.setText("Usuń")
+        cancel_button.setText("Anuluj")
+        message_box.setDefaultButton(QMessageBox.StandardButton.No)
+
+        if message_box.exec() != QMessageBox.StandardButton.Yes:
+            self._populate_account_selector()
+            return
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        self.configuration_store.delete_account(active_account_id)
+        configuration = self.configuration_store.load()
+        self._populate_account_selector()
+        self._apply_configuration(configuration)
+        self.log_view.append(f"Usunięto konto: {active_account.name}.")
 
     def _apply_configuration(self, configuration):
         destination = (

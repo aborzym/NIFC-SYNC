@@ -361,6 +361,7 @@ class DownloadScanPlansTest(unittest.TestCase):
             result = download_scan_plans(
                 session,
                 (request,),
+                log=Mock(),
             )
 
             provider.download_and_extract.assert_called_once_with(

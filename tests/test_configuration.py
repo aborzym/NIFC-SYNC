@@ -12,6 +12,54 @@ from core.configuration import (
 
 
 class ConfigurationStoreTest(unittest.TestCase):
+    def test_deletes_active_account_and_selects_remaining_one(
+        self,
+    ):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+        second_account = self.store.create_account(
+            "Marta",
+            AppConfiguration(
+                nifc_username="marta",
+                setup_completed=True,
+            ),
+        )
+
+        self.store.delete_account(second_account.account_id)
+
+        accounts = self.store.list_accounts()
+
+        self.assertEqual(len(accounts), 1)
+        self.assertEqual(
+            accounts[0].account_id,
+            "account-1",
+        )
+        self.assertEqual(
+            self.store.active_account_id(),
+            "account-1",
+        )
+        self.assertFalse(
+            self.settings.contains("accounts/account-2/credentials/username")
+        )
+
+    def test_rejects_deleting_only_account(self):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "jedynego konta",
+        ):
+            self.store.delete_account("account-1")
+
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         settings_path = Path(self.temporary_directory.name) / "settings.ini"
