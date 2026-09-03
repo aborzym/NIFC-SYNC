@@ -102,6 +102,52 @@ class ConfigurationStoreTest(unittest.TestCase):
             id_factory=create_account_id,
         )
 
+    def test_rejects_duplicate_account_name(self):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "już istnieje",
+        ):
+            self.store.create_account(
+                "  ANDRZEJ  ",
+                AppConfiguration(
+                    nifc_username="drugi-login",
+                    setup_completed=True,
+                ),
+            )
+
+    def test_rejects_renaming_to_existing_account_name(
+        self,
+    ):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+        second_account = self.store.create_account(
+            "Marta",
+            AppConfiguration(
+                nifc_username="marta",
+                setup_completed=True,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "już istnieje",
+        ):
+            self.store.rename_account(
+                second_account.account_id,
+                "  Andrzej  ",
+            )
+
     def tearDown(self):
         self.settings.clear()
         self.settings.sync()

@@ -94,14 +94,35 @@ class ConfigurationStore:
             for account_id in self._account_ids()
         )
 
-    def rename_account(self, account_id, name):
+    def _validate_account_name(
+        self,
+        name,
+        excluded_account_id=None,
+    ):
         name = name.strip()
 
         if not name:
             raise ValueError("Nazwa konta nie może być pusta.")
 
+        normalized_name = name.casefold()
+
+        for account in self.list_accounts():
+            if (
+                account.account_id != excluded_account_id
+                and account.name.strip().casefold() == normalized_name
+            ):
+                raise ValueError("Konto o tej nazwie już istnieje.")
+
+        return name
+
+    def rename_account(self, account_id, name):
         if account_id not in self._account_ids():
             raise ValueError("Nie znaleziono konta.")
+
+        name = self._validate_account_name(
+            name,
+            excluded_account_id=account_id,
+        )
 
         self.settings.setValue(
             f"accounts/{account_id}/name",
@@ -114,11 +135,7 @@ class ConfigurationStore:
         name,
         configuration=None,
     ):
-        name = name.strip()
-
-        if not name:
-            raise ValueError("Nazwa konta nie może być pusta.")
-
+        name = self._validate_account_name(name)
         account_id = self._create_account_record(name)
         self._save_account_configuration(
             account_id,
