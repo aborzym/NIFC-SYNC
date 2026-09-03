@@ -156,9 +156,18 @@ def plan_scans(
             output_folder_name = scan_package_folder_name(download_info.filename)
 
         scans_folder = destination_folder / output_folder_name
-        is_incomplete = (
-            scans_folder.exists() and validate_scan_manifest(scans_folder) is False
-        )
+
+        if scans_folder.exists():
+            manifest_status = validate_scan_manifest(scans_folder)
+
+            if manifest_status is not False:
+                log("SKANY JUŻ ISTNIEJĄ:")
+                log(f"  FOLDER: {scans_folder}")
+                continue
+
+            is_incomplete = True
+        else:
+            is_incomplete = False
 
         if is_incomplete:
             log("SKANY SĄ NIEKOMPLETNE — WYMAGAJĄ NAPRAWY")

@@ -10,6 +10,7 @@ from core.configuration import (
 from core.libraries import (
     library_scans_path_key,
 )
+from core.scan_manifest import write_scan_manifest
 from core.scan_sync import (
     ScanDownloadRequest,
     download_scan_plans,
@@ -19,6 +20,76 @@ from core.scans import get_scan_group_key
 
 
 class DownloadScanPlansTest(unittest.TestCase):
+    @patch("core.scan_sync.find_scan_provider")
+    def test_skips_completed_marta_package_folder(
+        self,
+        find_provider,
+    ):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            parent_folder = Path(temporary_directory)
+            scans_root = parent_folder / "Sandomierz.źródła"
+            package_folder = scans_root / "1483_Missa_in_D_DjVu"
+            package_folder.mkdir(parents=True)
+            (package_folder / "page.djvu").write_bytes(b"djvu-content")
+
+            filename = "pl-sa--227-a-vi-31--001-005_anonim--msza-agnus-dei.krn"
+            group_key = get_scan_group_key(filename)
+            normalized_url = "sandomierz-1551"
+            source_url = (
+                "https://bc.bdsandomierz.pl/publication/1583/edition/1551/content"
+            )
+            archive_name = "1483_Missa_in_D_DjVu.zip"
+            write_scan_manifest(
+                package_folder,
+                source_url,
+                archive_name,
+            )
+
+            provider = Mock()
+            provider.get_download_info.return_value = Mock(
+                filename=archive_name,
+                content_type="application/zip",
+                size=1234,
+            )
+            find_provider.return_value = provider
+            configuration = AppConfiguration(
+                destination=parent_folder,
+                naming_profile="marta-lawrence",
+                organization_paths=(
+                    OrganizationPath(
+                        key=library_scans_path_key("pl-sa"),
+                        path=Path("Sandomierz.źródła"),
+                    ),
+                ),
+            )
+
+            plans = plan_scans(
+                selected_workflow={
+                    "files": [
+                        {
+                            "name": filename,
+                        }
+                    ],
+                },
+                scan_urls_by_group={
+                    group_key: {
+                        normalized_url,
+                    },
+                },
+                scan_sources_by_url={
+                    normalized_url: {
+                        "url": source_url,
+                    },
+                },
+                existing_scans_by_url={},
+                target_folders={},
+                session=Mock(),
+                configuration=configuration,
+                log=Mock(),
+            )
+
+            self.assertEqual(plans, ())
+
     @patch("core.scan_sync.write_scan_manifest")
     def test_creates_scans_root_only_when_downloading(
         self,
