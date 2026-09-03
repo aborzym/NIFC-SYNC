@@ -83,6 +83,17 @@ class ConfigurationStore:
 
         return tuple(accounts)
 
+    def has_account_for_username(self, username):
+        username = username.strip()
+
+        if not username:
+            return False
+
+        return any(
+            self._load_configuration(account_id).nifc_username == username
+            for account_id in self._account_ids()
+        )
+
     def rename_account(self, account_id, name):
         name = name.strip()
 

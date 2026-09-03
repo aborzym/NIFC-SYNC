@@ -17,6 +17,11 @@
 - [ ] Pobranie skanów do folderu pakietu bez końcówki `.zip`.
 - [ ] Rozpoznanie istniejącego starego folderu pakietu z końcówką `.zip`.
 - [ ] Ponowne pobranie i naprawa pakietu z uszkodzonym manifestem.
+- [ ] Dodanie drugiego konta i usunięcie go z listy kont.
+- [ ] Przełączenie na pozostałe konto po usunięciu aktywnego.
+- [ ] Zablokowanie próby usunięcia jedynego konta.
+- [ ] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
+- [ ] Zachowanie hasła, gdy ten sam login jest używany przez inne konto.
 
 ## Wykonane na macOS
 

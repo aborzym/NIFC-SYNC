@@ -720,8 +720,8 @@ class MainWindow(QMainWindow):
         message_box.setText(
             f"Czy usunąć konto „{active_account.name}” "
             "wraz z jego ustawieniami?\n\n"
-            "Dane logowania pozostaną w systemowym "
-            "magazynie haseł."
+            "Dane logowania również zostaną usunięte, "
+            "jeśli nie korzysta z nich inne konto."
         )
         message_box.setStandardButtons(
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
@@ -736,10 +736,25 @@ class MainWindow(QMainWindow):
             self._populate_account_selector()
             return
 
+        deleted_username = self.configuration_store.load().nifc_username
+
         if self.workflows:
             self._disconnect_catalog()
 
         self.configuration_store.delete_account(active_account_id)
+
+        if deleted_username and not self.configuration_store.has_account_for_username(
+            deleted_username
+        ):
+            try:
+                self.credential_store.delete(deleted_username)
+            except CredentialStoreError as error:
+                QMessageBox.warning(
+                    self,
+                    "Nie można usunąć danych logowania",
+                    str(error),
+                )
+
         configuration = self.configuration_store.load()
         self._populate_account_selector()
         self._apply_configuration(configuration)

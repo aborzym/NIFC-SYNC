@@ -45,6 +45,29 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertFalse(
             self.settings.contains("accounts/account-2/credentials/username")
         )
+        self.assertFalse(self.store.has_account_for_username("marta"))
+        self.assertTrue(self.store.has_account_for_username("andrzej"))
+
+    def test_detects_username_used_by_remaining_account(
+        self,
+    ):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+        second_account = self.store.create_account(
+            "Drugie ustawienia Andrzeja",
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            ),
+        )
+
+        self.store.delete_account(second_account.account_id)
+
+        self.assertTrue(self.store.has_account_for_username("andrzej"))
 
     def test_rejects_deleting_only_account(self):
         self.store.save(
@@ -67,9 +90,16 @@ class ConfigurationStoreTest(unittest.TestCase):
             str(settings_path),
             QSettings.IniFormat,
         )
+        self.next_account_number = 1
+
+        def create_account_id():
+            account_id = f"account-{self.next_account_number}"
+            self.next_account_number += 1
+            return account_id
+
         self.store = ConfigurationStore(
             self.settings,
-            id_factory=lambda: "account-1",
+            id_factory=create_account_id,
         )
 
     def tearDown(self):
