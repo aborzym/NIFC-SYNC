@@ -69,6 +69,41 @@ class ConfigurationStoreTest(unittest.TestCase):
 
         self.assertTrue(self.store.has_account_for_username("andrzej"))
 
+    def test_rejects_nifc_username_used_by_another_account(
+        self,
+    ):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Konto korzystające z tego loginu",
+        ):
+            self.store.validate_nifc_username(
+                "  ANDRZEJ  ",
+            )
+
+    def test_allows_nifc_username_of_edited_account(
+        self,
+    ):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                setup_completed=True,
+            )
+        )
+
+        result = self.store.validate_nifc_username(
+            "  ANDRZEJ  ",
+            excluded_account_id="account-1",
+        )
+
+        self.assertEqual(result, "ANDRZEJ")
+
     def test_rejects_deleting_only_account(self):
         self.store.save(
             AppConfiguration(

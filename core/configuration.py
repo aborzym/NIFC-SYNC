@@ -83,16 +83,49 @@ class ConfigurationStore:
 
         return tuple(accounts)
 
-    def has_account_for_username(self, username):
+    def has_account_for_username(
+        self,
+        username,
+        excluded_account_id=None,
+    ):
         username = username.strip()
 
         if not username:
             return False
 
         return any(
-            self._load_configuration(account_id).nifc_username == username
+            account_id != excluded_account_id
+            and (self._load_configuration(account_id).nifc_username == username)
             for account_id in self._account_ids()
         )
+
+    def validate_nifc_username(
+        self,
+        username,
+        excluded_account_id=None,
+    ):
+        username = username.strip()
+        normalized_username = username.casefold()
+
+        if not username:
+            raise ValueError("Login NIFC nie może być pusty.")
+
+        for account_id in self._account_ids():
+            if account_id == excluded_account_id:
+                continue
+
+            existing_username = self._load_configuration(
+                account_id
+            ).nifc_username.strip()
+
+            if existing_username.casefold() == normalized_username:
+                raise ValueError(
+                    "Konto korzystające z tego loginu "
+                    "NIFC już istnieje. Wybierz je z listy "
+                    "kont albo podaj inny login."
+                )
+
+        return username
 
     def validate_account_name(
         self,

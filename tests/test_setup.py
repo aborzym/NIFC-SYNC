@@ -51,6 +51,34 @@ class CompleteSetupTest(unittest.TestCase):
         self.credential_store.save.assert_not_called()
         self.configuration_store.create_account.assert_not_called()
 
+    def test_rejects_duplicate_nifc_username_before_saving_password(
+        self,
+    ):
+        self.configuration_store.validate_nifc_username.side_effect = ValueError(
+            "Konto korzystające z tego loginu NIFC już istnieje."
+        )
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="andrzej",
+            password="nowe-haslo",
+            account_name="Drugie konto",
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "Konto korzystające z tego loginu",
+        ):
+            complete_setup(
+                request,
+                self.configuration_store,
+                self.credential_store,
+                create_new_account=True,
+            )
+
+        self.credential_store.save.assert_not_called()
+        self.configuration_store.create_account.assert_not_called()
+
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.destination = Path(self.temporary_directory.name)

@@ -93,6 +93,10 @@ def complete_setup(
     )
 
     try:
+        configuration_store.validate_nifc_username(
+            username,
+            excluded_account_id=excluded_account_id,
+        )
         configuration_store.validate_account_name(
             account_name,
             excluded_account_id=excluded_account_id,
