@@ -37,7 +37,7 @@ class MainWindow(QMainWindow):
 
         self.configuration_store = ConfigurationStore()
         self.credential_store = CredentialStore()
-        self.setWindowTitle("NIFC-SYNC 3.0")
+        self.setWindowTitle("NIFC-SYNC 4.0")
         self.setMinimumSize(760, 560)
         self.workflows = {}
         self.catalog_thread = None
@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
-        self.copyright_label = QLabel("© 2026 Andrzej Borzym · NIFC-SYNC 3.0")
+        self.copyright_label = QLabel("© 2026 Andrzej Borzym · NIFC-SYNC 4.0")
         self.copyright_label.setObjectName("copyrightLabel")
         self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
