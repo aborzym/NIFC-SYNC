@@ -19,6 +19,64 @@ from core.scans import get_scan_group_key
 
 
 class DownloadScanPlansTest(unittest.TestCase):
+    @patch("core.scan_sync.write_scan_manifest")
+    def test_creates_scans_root_only_when_downloading(
+        self,
+        write_manifest,
+    ):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            parent_folder = Path(temporary_directory)
+            destination_folder = parent_folder / "Sandomierz.źródła"
+            output_folder = destination_folder / "1483_Missa_in_D_DjVu"
+            session = Mock()
+            download_info = Mock(
+                filename="1483_Missa_in_D_DjVu.zip",
+            )
+            provider = Mock()
+
+            def download_and_extract(
+                _session,
+                _download_info,
+                received_destination,
+                _progress,
+                output_folder_name,
+            ):
+                self.assertTrue(received_destination.is_dir())
+                target = received_destination / output_folder_name
+                target.mkdir()
+                return target
+
+            provider.download_and_extract.side_effect = download_and_extract
+            request = ScanDownloadRequest(
+                group_key="pl-sa--227-a-vi-31",
+                transcription_name="pl-sa--utwor.krn",
+                source_url="https://example.test/skany",
+                destination_folder=destination_folder,
+                download_info=download_info,
+                provider=provider,
+                is_incomplete=False,
+                output_folder_name=("1483_Missa_in_D_DjVu"),
+            )
+
+            self.assertFalse(destination_folder.exists())
+
+            result = download_scan_plans(
+                session,
+                (request,),
+                log=Mock(),
+            )
+
+            self.assertTrue(output_folder.is_dir())
+            self.assertEqual(
+                result.downloaded_packages,
+                1,
+            )
+            write_manifest.assert_called_once_with(
+                output_folder,
+                request.source_url,
+                download_info.filename,
+            )
+
     @patch("core.scan_sync.find_scan_provider")
     def test_skips_legacy_marta_package_folder(
         self,
