@@ -20,7 +20,7 @@
 - [ ] Dodanie drugiego konta i usunięcie go z listy kont.
 - [ ] Przełączenie na pozostałe konto po usunięciu aktywnego.
 - [ ] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
-- [ ] Zablokowanie utworzenia konta z loginem NIFC używanym przez inne konto.
+- [ ] Natychmiastowe zablokowanie loginu NIFC używanego przez inne konto, przed próbą połączenia z NIFC.
 - [ ] Sprawdzenie, że konflikt loginu nie nadpisuje hasła w keyringu.
 - [ ] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
 - [ ] Zachowanie hasła dla starszej konfiguracji, gdy login jest współdzielony przez inne konto.

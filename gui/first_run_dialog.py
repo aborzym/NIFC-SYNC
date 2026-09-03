@@ -519,6 +519,22 @@ class FirstRunDialog(QDialog):
         )
 
         try:
+            excluded_account_id = (
+                None
+                if self.new_account
+                else self.configuration_store.active_account_id()
+            )
+            account_name = request.account_name.strip() or request.username.strip()
+
+            self.configuration_store.validate_nifc_username(
+                request.username,
+                excluded_account_id=excluded_account_id,
+            )
+            self.configuration_store.validate_account_name(
+                account_name,
+                excluded_account_id=excluded_account_id,
+            )
+
             verify_nifc_login(
                 request.username,
                 request.password,
@@ -530,7 +546,11 @@ class FirstRunDialog(QDialog):
                 create_new_account=self.new_account,
             )
 
-        except (SetupError, CredentialStoreError) as error:
+        except (
+            SetupError,
+            CredentialStoreError,
+            ValueError,
+        ) as error:
             QMessageBox.warning(
                 self,
                 "Nie można zapisać konfiguracji",
