@@ -62,3 +62,21 @@ def scan_package_folder_name(filename):
         raise ValueError("Nieprawidłowa nazwa pakietu skanów.")
 
     return safe_name
+
+
+def find_legacy_scan_package_folder(
+    destination_folder,
+    filename,
+):
+    filename = str(filename).strip()
+    scan_package_folder_name(filename)
+
+    if not filename.casefold().endswith(".zip"):
+        return None
+
+    legacy_folder = Path(destination_folder) / filename
+
+    if not legacy_folder.is_dir():
+        return None
+
+    return legacy_folder

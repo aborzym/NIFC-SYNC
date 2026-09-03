@@ -7,12 +7,39 @@ from core.configuration import (
     OrganizationPath,
 )
 from core.destinations import (
+    find_legacy_scan_package_folder,
     resolve_asset_root,
     scan_package_folder_name,
 )
 
 
 class DestinationResolverTest(unittest.TestCase):
+    def test_finds_legacy_scan_package_folder(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            destination_folder = Path(temporary_directory)
+            legacy_folder = destination_folder / "1483_Missa_in_D_DjVu.zip"
+            legacy_folder.mkdir()
+
+            self.assertEqual(
+                find_legacy_scan_package_folder(
+                    destination_folder,
+                    "1483_Missa_in_D_DjVu.zip",
+                ),
+                legacy_folder,
+            )
+            self.assertIsNone(
+                find_legacy_scan_package_folder(
+                    destination_folder,
+                    "nie-istnieje.zip",
+                )
+            )
+            self.assertIsNone(
+                find_legacy_scan_package_folder(
+                    destination_folder,
+                    "pakiet-bez-rozszerzenia",
+                )
+            )
+
     def test_resolves_marta_transcription_folder(self):
         configuration = AppConfiguration(
             naming_profile="marta-lawrence",

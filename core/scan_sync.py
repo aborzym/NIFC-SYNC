@@ -6,6 +6,7 @@ from pathlib import Path
 import requests
 
 from core.destinations import (
+    find_legacy_scan_package_folder,
     resolve_asset_root,
     scan_package_folder_name,
 )
@@ -143,6 +144,15 @@ def plan_scans(
         output_folder_name = "skany"
 
         if is_marta_profile:
+            legacy_folder = find_legacy_scan_package_folder(
+                destination_folder,
+                download_info.filename,
+            )
+
+            if legacy_folder is not None:
+                log(f"SKANY JUŻ ISTNIEJĄ W STARYM FOLDERZE: {legacy_folder}")
+                continue
+
             output_folder_name = scan_package_folder_name(download_info.filename)
 
         scans_folder = destination_folder / output_folder_name
