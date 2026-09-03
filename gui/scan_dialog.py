@@ -71,6 +71,10 @@ class ScanSelectionDialog(QDialog):
         for column, width in enumerate(initial_widths):
             self.table.setColumnWidth(column, width)
 
+        self._adjusting_columns = False
+        header.sectionResized.connect(self._keep_columns_fitted)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         for row, plan in enumerate(self.plans):
             name_item = QTableWidgetItem(plan.transcription_name)
             name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -143,19 +147,25 @@ class ScanSelectionDialog(QDialog):
         layout.addLayout(buttons)
 
         self._update_summary()
+        self._restore_geometry()
+
+    def showEvent(self, event):
+        super().showEvent(event)
         QTimer.singleShot(
             0,
             self._fit_columns_to_width,
         )
-        self._restore_geometry()
 
     def _restore_geometry(self):
-        geometry = QSettings().value("scan_dialog/geometry")
+        settings = QSettings()
+        geometry = settings.value("scan_dialog/geometry")
+
         if geometry is not None:
             self.restoreGeometry(geometry)
 
     def done(self, result):
-        QSettings().setValue(
+        settings = QSettings()
+        settings.setValue(
             "scan_dialog/geometry",
             self.saveGeometry(),
         )
@@ -168,26 +178,121 @@ class ScanSelectionDialog(QDialog):
             if self.table.item(row, 0).checkState() == Qt.CheckState.Checked
         )
 
+    def _scale_widths_to_total(
+        self,
+        widths,
+        total_width,
+    ):
+        if not widths:
+            return []
+
+        minimum_width = 50
+
+        if total_width < minimum_width * len(widths):
+            minimum_width = max(
+                1,
+                total_width // len(widths),
+            )
+
+        result = [0] * len(widths)
+        pending = list(range(len(widths)))
+        remaining_width = total_width
+
+        while pending:
+            weight_sum = sum(max(widths[index], 1) for index in pending)
+            too_narrow = [
+                index
+                for index in pending
+                if (remaining_width * max(widths[index], 1) / weight_sum)
+                < minimum_width
+            ]
+
+            if not too_narrow:
+                break
+
+            for index in too_narrow:
+                result[index] = minimum_width
+                remaining_width -= minimum_width
+                pending.remove(index)
+
+        if pending:
+            weight_sum = sum(max(widths[index], 1) for index in pending)
+            allocated_width = 0
+
+            for index in pending[:-1]:
+                width = round(remaining_width * max(widths[index], 1) / weight_sum)
+                result[index] = width
+                allocated_width += width
+
+            result[pending[-1]] = remaining_width - allocated_width
+
+        return result
+
+    def _apply_column_widths(self, widths):
+        self._adjusting_columns = True
+
+        try:
+            for column, width in enumerate(widths):
+                self.table.setColumnWidth(column, width)
+        finally:
+            self._adjusting_columns = False
+
     def _fit_columns_to_width(self):
         available_width = self.table.viewport().width()
-        column_widths = [
-            self.table.columnWidth(column) for column in range(self.table.columnCount())
-        ]
-        current_width = sum(column_widths)
 
-        if available_width <= 0 or current_width <= 0:
+        if available_width <= 0:
             return
 
-        scale = available_width / current_width
-        scaled_widths = [round(width * scale) for width in column_widths]
+        current_widths = [
+            self.table.columnWidth(column) for column in range(self.table.columnCount())
+        ]
+        fitted_widths = self._scale_widths_to_total(
+            current_widths,
+            available_width,
+        )
+        self._apply_column_widths(fitted_widths)
 
-        scaled_widths[-1] += available_width - sum(scaled_widths)
+    def _keep_columns_fitted(
+        self,
+        resized_column,
+        old_width,
+        new_width,
+    ):
+        if self._adjusting_columns or old_width == new_width:
+            return
 
-        for column, width in enumerate(scaled_widths):
-            self.table.setColumnWidth(
-                column,
-                max(50, width),
-            )
+        available_width = self.table.viewport().width()
+        column_count = self.table.columnCount()
+        minimum_width = 50
+
+        maximum_width = available_width - minimum_width * (column_count - 1)
+        resized_width = max(
+            minimum_width,
+            min(new_width, maximum_width),
+        )
+
+        other_columns = [
+            column for column in range(column_count) if column != resized_column
+        ]
+        other_widths = [self.table.columnWidth(column) for column in other_columns]
+        fitted_other_widths = self._scale_widths_to_total(
+            other_widths,
+            available_width - resized_width,
+        )
+
+        final_widths = [
+            self.table.columnWidth(column) for column in range(column_count)
+        ]
+        final_widths[resized_column] = resized_width
+
+        for column, width in zip(
+            other_columns,
+            fitted_other_widths,
+            strict=True,
+        ):
+            final_widths[column] = width
+
+        self._apply_column_widths(final_widths)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
