@@ -6,7 +6,6 @@ from gui.scan_dialog import ScanSelectionDialog
 class ScaleColumnWidthsTest(unittest.TestCase):
     def test_fills_available_width_exactly(self):
         result = ScanSelectionDialog._scale_widths_to_total(
-            None,
             [280, 170, 130, 220, 90, 80],
             1200,
         )
@@ -19,7 +18,6 @@ class ScaleColumnWidthsTest(unittest.TestCase):
         self,
     ):
         result = ScanSelectionDialog._scale_widths_to_total(
-            None,
             [900, 20, 20, 20, 20, 20],
             700,
         )

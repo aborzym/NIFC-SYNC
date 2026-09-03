@@ -178,8 +178,8 @@ class ScanSelectionDialog(QDialog):
             if self.table.item(row, 0).checkState() == Qt.CheckState.Checked
         )
 
+    @staticmethod
     def _scale_widths_to_total(
-        self,
         widths,
         total_width,
     ):
