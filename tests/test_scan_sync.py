@@ -19,6 +19,53 @@ from core.scans import get_scan_group_key
 
 
 class DownloadScanPlansTest(unittest.TestCase):
+    def test_skips_marta_library_without_scans_folder(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            filename = "pl-sa--227-a-vi-31--001-005_anonim--msza-agnus-dei.krn"
+            group_key = get_scan_group_key(filename)
+            normalized_url = "sandomierz-1551"
+            log = Mock()
+            configuration = AppConfiguration(
+                destination=Path(temporary_directory),
+                naming_profile="marta-lawrence",
+            )
+
+            plans = plan_scans(
+                selected_workflow={
+                    "files": [
+                        {
+                            "name": filename,
+                        }
+                    ],
+                },
+                scan_urls_by_group={
+                    group_key: {
+                        normalized_url,
+                    },
+                },
+                scan_sources_by_url={
+                    normalized_url: {
+                        "url": (
+                            "https://bc.bdsandomierz.pl/"
+                            "publication/1583/edition/"
+                            "1551/content"
+                        ),
+                    },
+                },
+                existing_scans_by_url={},
+                target_folders={},
+                session=Mock(),
+                configuration=configuration,
+                log=log,
+            )
+
+            self.assertEqual(plans, ())
+            log.assert_any_call(
+                "BRAK SKONFIGUROWANEGO FOLDERU SKANÓW DLA BIBLIOTEKI — POMIJAM"
+            )
+
     @patch("core.scan_sync.write_scan_manifest")
     def test_uses_named_output_folder(
         self,
