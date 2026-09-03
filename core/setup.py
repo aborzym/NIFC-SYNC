@@ -65,6 +65,25 @@ def verify_nifc_login(
         )
 
 
+def remove_obsolete_credentials(
+    previous_username,
+    current_username,
+    configuration_store,
+    credential_store,
+):
+    previous_username = previous_username.strip()
+    current_username = current_username.strip()
+
+    if not previous_username or previous_username == current_username:
+        return False
+
+    if configuration_store.has_account_for_username(previous_username):
+        return False
+
+    credential_store.delete(previous_username)
+    return True
+
+
 def complete_setup(
     request: SetupRequest,
     configuration_store: ConfigurationStore,

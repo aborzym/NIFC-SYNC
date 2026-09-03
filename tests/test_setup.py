@@ -18,11 +18,42 @@ from core.setup import (
     SetupError,
     SetupRequest,
     complete_setup,
+    remove_obsolete_credentials,
     verify_nifc_login,
 )
 
 
 class CompleteSetupTest(unittest.TestCase):
+    def test_removes_obsolete_credentials(
+        self,
+    ):
+        self.configuration_store.has_account_for_username.return_value = False
+
+        removed = remove_obsolete_credentials(
+            "stary-login",
+            "nowy-login",
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.assertTrue(removed)
+        self.credential_store.delete.assert_called_once_with("stary-login")
+
+    def test_preserves_credentials_used_by_another_account(
+        self,
+    ):
+        self.configuration_store.has_account_for_username.return_value = True
+
+        removed = remove_obsolete_credentials(
+            "wspolny-login",
+            "nowy-login",
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.assertFalse(removed)
+        self.credential_store.delete.assert_not_called()
+
     def test_rejects_duplicate_account_before_saving_password(
         self,
     ):

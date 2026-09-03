@@ -41,6 +41,7 @@ from core.setup import (
     SetupError,
     SetupRequest,
     complete_setup,
+    remove_obsolete_credentials,
     verify_nifc_login,
 )
 from gui.network_dialog import NetworkBrowserDialog
@@ -518,6 +519,10 @@ class FirstRunDialog(QDialog):
             network_url=self.network_url_edit.text(),
         )
 
+        previous_username = (
+            "" if self.new_account else self.configuration_store.load().nifc_username
+        )
+
         try:
             excluded_account_id = (
                 None
@@ -557,5 +562,23 @@ class FirstRunDialog(QDialog):
                 str(error),
             )
             return
+
+        try:
+            remove_obsolete_credentials(
+                previous_username,
+                self.completed_configuration.nifc_username,
+                self.configuration_store,
+                self.credential_store,
+            )
+        except CredentialStoreError as error:
+            QMessageBox.warning(
+                self,
+                "Pozostały stare dane logowania",
+                (
+                    "Ustawienia zostały zapisane, ale nie udało "
+                    "się usunąć poprzednich danych logowania.\n\n"
+                    f"{error}"
+                ),
+            )
 
         self.accept()

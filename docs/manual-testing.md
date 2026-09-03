@@ -22,6 +22,8 @@
 - [ ] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
 - [ ] Natychmiastowe zablokowanie loginu NIFC używanego przez inne konto, przed próbą połączenia z NIFC.
 - [ ] Sprawdzenie, że konflikt loginu nie nadpisuje hasła w keyringu.
+- [ ] Usunięcie poprzedniego hasła z keyringu po zmianie loginu NIFC.
+- [ ] Wyświetlenie ostrzeżenia, gdy nie można usunąć poprzedniego hasła.
 - [ ] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
 - [ ] Zachowanie hasła dla starszej konfiguracji, gdy login jest współdzielony przez inne konto.
 - [ ] Wyświetlenie folderu docelowego w oknie wyboru skanów.
