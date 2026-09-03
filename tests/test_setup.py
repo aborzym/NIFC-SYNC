@@ -402,6 +402,20 @@ class CompleteSetupTest(unittest.TestCase):
 
         self.assertNotIn("tajne-haslo", repr(request))
 
+    def test_keeps_credentials_when_username_is_unchanged(
+        self,
+    ):
+        removed = remove_obsolete_credentials(
+            "andrzej",
+            "andrzej",
+            self.configuration_store,
+            self.credential_store,
+        )
+
+        self.assertFalse(removed)
+        (self.configuration_store.has_account_for_username.assert_not_called())
+        self.credential_store.delete.assert_not_called()
+
 
 class VerifyNifcLoginTest(unittest.TestCase):
     def test_accepts_valid_credentials(self):
