@@ -208,9 +208,8 @@ class MainWindow(QMainWindow):
         return group
 
     def _create_destination_group(self):
-        group = QGroupBox("Katalog docelowy")
-        layout = QHBoxLayout(group)
-
+        self.destination_group = QGroupBox("Katalog docelowy")
+        layout = QHBoxLayout(self.destination_group)
         self.destination_edit = QLineEdit(str(Path.home() / "mac_transkrypcje"))
         self.destination_edit.setClearButtonEnabled(True)
 
@@ -220,7 +219,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.destination_edit, stretch=1)
         layout.addWidget(self.browse_button)
 
-        return group
+        return self.destination_group
 
     def _choose_destination(self):
         selected_directory = QFileDialog.getExistingDirectory(
@@ -761,6 +760,14 @@ class MainWindow(QMainWindow):
         self.log_view.append(f"Usunięto konto: {active_account.name}.")
 
     def _apply_configuration(self, configuration):
+
+        if configuration.naming_profile == "marta-lawrence":
+            self.destination_group.setTitle("Folder nadrzędny")
+            self.destination_edit.setPlaceholderText("Folder nadrzędny, np. Pulpit")
+        else:
+            self.destination_group.setTitle("Katalog docelowy")
+            self.destination_edit.setPlaceholderText("Katalog docelowy")
+
         destination = (
             str(configuration.destination)
             if configuration.destination is not None
