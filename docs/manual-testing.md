@@ -19,8 +19,10 @@
 - [ ] Ponowne pobranie i naprawa pakietu z uszkodzonym manifestem.
 - [ ] Dodanie drugiego konta i usunięcie go z listy kont.
 - [ ] Przełączenie na pozostałe konto po usunięciu aktywnego.
-- [ ] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
-- [ ] Natychmiastowe zablokowanie loginu NIFC używanego przez inne konto, przed próbą połączenia z NIFC.
+- [x] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
+- [x] Zablokowanie zapisu konta bez własnej nazwy.
+- [x] Natychmiastowe zablokowanie loginu NIFC używanego przez inne konto, przed próbą połączenia z NIFC.
+- [x] Powrót selektora do aktywnego konta po anulowaniu dodawania.
 - [ ] Sprawdzenie, że konflikt loginu nie nadpisuje hasła w keyringu.
 - [ ] Usunięcie poprzedniego hasła z keyringu po zmianie loginu NIFC.
 - [ ] Wyświetlenie ostrzeżenia, gdy nie można usunąć poprzedniego hasła.
