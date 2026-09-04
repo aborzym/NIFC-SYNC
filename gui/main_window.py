@@ -222,10 +222,17 @@ class MainWindow(QMainWindow):
         return self.destination_group
 
     def _choose_destination(self):
+        configuration = self.configuration_store.load()
+        dialog_title = (
+            "Wybierz folder nadrzędny"
+            if configuration.naming_profile == "marta-lawrence"
+            else "Wybierz katalog docelowy"
+        )
+
         selected_directory = QFileDialog.getExistingDirectory(
             self,
-            "Wybierz katalog docelowy",
-            self.destination_edit.text(),
+            dialog_title,
+            self.destination_edit.text().strip(),
         )
 
         if selected_directory:
