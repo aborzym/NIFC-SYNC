@@ -1,6 +1,7 @@
 import base64
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 from core.configuration import (
@@ -77,6 +78,54 @@ class TranscriptionSyncTest(unittest.TestCase):
         self.assertEqual(result.skipped_count, 1)
         self.assertFalse((target_folder / self.filename).exists())
         self.assertTrue(existing_file.exists())
+
+    def test_kubiczek_writes_file_to_selected_workflow_folder(
+        self,
+    ):
+        configuration = AppConfiguration(
+            destination=self.base_dir,
+            naming_profile="andrzej-kubiczek",
+        )
+        current_year = datetime.now(UTC).astimezone().year
+        cases = (
+            ("KRN-diplomatic", "diplomatic"),
+            ("KRN-modern", "modern"),
+            ("XML", "XML"),
+        )
+
+        for workflow_name, folder_name in cases:
+            with self.subTest(workflow_name=workflow_name):
+                workflow = {
+                    **self.workflow,
+                    "name": workflow_name,
+                }
+
+                result = sync_transcriptions(
+                    workflow,
+                    self.base_dir,
+                    (),
+                    1,
+                    log=lambda _message: None,
+                    configuration=configuration,
+                )
+
+                expected_folder = (
+                    self.base_dir / str(current_year) / "in progress" / folder_name
+                )
+                expected_file = expected_folder / self.filename
+
+                self.assertTrue(expected_folder.is_dir())
+                self.assertEqual(
+                    expected_file.read_bytes(),
+                    self.content,
+                )
+                self.assertEqual(result.created_count, 1)
+                self.assertEqual(result.downloaded_count, 1)
+                self.assertEqual(result.skipped_count, 0)
+                self.assertEqual(
+                    result.target_folders[self.filename],
+                    expected_folder,
+                )
 
     def test_marta_writes_file_directly_to_library_folder(
         self,

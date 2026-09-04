@@ -20,10 +20,11 @@ class TranscriptionSyncResult:
     target_folders: dict[str, Path]
 
 
-def _sync_marta_transcriptions(
+def _sync_loose_transcriptions(
     selected_workflow,
     configuration,
     log,
+    workflow_name=None,
 ):
     created_count = 0
     downloaded_count = 0
@@ -38,6 +39,7 @@ def _sync_marta_transcriptions(
             configuration,
             api_name,
             "transcriptions",
+            workflow_name=workflow_name,
         )
 
         if target_folder is None:
@@ -76,6 +78,31 @@ def _sync_marta_transcriptions(
     )
 
 
+def _sync_marta_transcriptions(
+    selected_workflow,
+    configuration,
+    log,
+):
+    return _sync_loose_transcriptions(
+        selected_workflow,
+        configuration,
+        log,
+    )
+
+
+def _sync_kubiczek_transcriptions(
+    selected_workflow,
+    configuration,
+    log,
+):
+    return _sync_loose_transcriptions(
+        selected_workflow,
+        configuration,
+        log,
+        workflow_name=selected_workflow["name"],
+    )
+
+
 def sync_transcriptions(
     selected_workflow,
     base_dir,
@@ -85,12 +112,20 @@ def sync_transcriptions(
     configuration=None,
 ):
 
-    if configuration is not None and configuration.naming_profile == "marta-lawrence":
-        return _sync_marta_transcriptions(
-            selected_workflow,
-            configuration,
-            log,
-        )
+    if configuration is not None:
+        if configuration.naming_profile == "marta-lawrence":
+            return _sync_marta_transcriptions(
+                selected_workflow,
+                configuration,
+                log,
+            )
+
+        if configuration.naming_profile == "andrzej-kubiczek":
+            return _sync_kubiczek_transcriptions(
+                selected_workflow,
+                configuration,
+                log,
+            )
 
     base_dir = Path(base_dir)
     workflow_name = selected_workflow["name"]

@@ -48,10 +48,14 @@ def plan_scans(
 ):
     plans = []
     selected_scan_groups = {}
-    is_marta_profile = (
-        configuration is not None and configuration.naming_profile == "marta-lawrence"
+    uses_named_scan_folders = (
+        configuration is not None
+        and configuration.naming_profile
+        in (
+            "marta-lawrence",
+            "andrzej-kubiczek",
+        )
     )
-
     log("\nKontrola skanów:")
 
     for api_file in selected_workflow["files"]:
@@ -110,19 +114,26 @@ def plan_scans(
             ),
         )
 
-        if is_marta_profile:
+        if uses_named_scan_folders:
+            workflow_name = (
+                selected_workflow["name"]
+                if configuration.naming_profile == "andrzej-kubiczek"
+                else None
+            )
             destination_folder = resolve_asset_root(
                 configuration,
                 primary_file["name"],
                 "scans",
+                workflow_name=workflow_name,
             )
-
             if destination_folder is None:
-                log("BRAK SKONFIGUROWANEGO FOLDERU SKANÓW DLA BIBLIOTEKI — POMIJAM")
+                if configuration.naming_profile == "marta-lawrence":
+                    log("BRAK SKONFIGUROWANEGO FOLDERU SKANÓW DLA BIBLIOTEKI — POMIJAM")
+                else:
+                    log("BRAK SKONFIGUROWANEGO FOLDERU DOCELOWEGO DLA SKANÓW — POMIJAM")
                 continue
         else:
             destination_folder = target_folders[primary_file["name"]]
-
         provider = find_scan_provider(source["url"])
 
         if provider is None:
@@ -143,12 +154,11 @@ def plan_scans(
 
         output_folder_name = "skany"
 
-        if is_marta_profile:
+        if uses_named_scan_folders:
             legacy_folder = find_legacy_scan_package_folder(
                 destination_folder,
                 download_info.filename,
             )
-
             if legacy_folder is not None:
                 log(f"SKANY JUŻ ISTNIEJĄ W STARYM FOLDERZE: {legacy_folder}")
                 continue

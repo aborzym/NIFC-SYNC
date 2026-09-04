@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -13,15 +14,39 @@ AssetKind = Literal[
     "scans",
 ]
 
+WORKFLOW_DESTINATION_NAMES = {
+    "KRN-diplomatic": "diplomatic",
+    "KRN-modern": "modern",
+    "XML": "XML",
+}
+
 
 def resolve_asset_root(
     configuration: AppConfiguration,
     filename,
     asset_kind: AssetKind,
+    workflow_name=None,
+    year=None,
 ):
+    if configuration.naming_profile == "andrzej-kubiczek":
+        if asset_kind not in ("transcriptions", "scans"):
+            raise ValueError(f"Nieznany rodzaj danych: {asset_kind}")
+
+        if configuration.destination is None:
+            return None
+
+        try:
+            workflow_folder = WORKFLOW_DESTINATION_NAMES[workflow_name]
+        except KeyError:
+            raise ValueError(f"Nieznany workflow: {workflow_name}") from None
+
+        if year is None:
+            year = datetime.now(UTC).astimezone().year
+
+        return configuration.destination / str(year) / "in progress" / workflow_folder
+
     if configuration.naming_profile != "marta-lawrence":
         return configuration.destination
-
     library_id = detect_library_id(filename)
 
     if library_id is None:

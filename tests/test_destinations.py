@@ -14,6 +14,39 @@ from core.destinations import (
 
 
 class DestinationResolverTest(unittest.TestCase):
+    def test_resolves_kubiczek_workflow_folders(self):
+        configuration = AppConfiguration(
+            destination=Path("/tmp/Kubiczek"),
+            naming_profile="andrzej-kubiczek",
+        )
+
+        cases = (
+            (
+                "KRN-diplomatic",
+                Path("/tmp/Kubiczek/2026/in progress/diplomatic"),
+            ),
+            (
+                "KRN-modern",
+                Path("/tmp/Kubiczek/2026/in progress/modern"),
+            ),
+            (
+                "XML",
+                Path("/tmp/Kubiczek/2026/in progress/XML"),
+            ),
+        )
+
+        for workflow_name, expected in cases:
+            with self.subTest(workflow_name=workflow_name):
+                result = resolve_asset_root(
+                    configuration,
+                    "pl-sa--227_msza.krn",
+                    "transcriptions",
+                    workflow_name=workflow_name,
+                    year=2026,
+                )
+
+                self.assertEqual(result, expected)
+
     def test_finds_legacy_scan_package_folder(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             destination_folder = Path(temporary_directory)

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -20,6 +21,74 @@ from core.scans import get_scan_group_key
 
 
 class DownloadScanPlansTest(unittest.TestCase):
+    @patch("core.scan_sync.find_scan_provider")
+    def test_plans_kubiczek_package_in_selected_workflow_folder(
+        self,
+        find_provider,
+    ):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            parent_folder = Path(temporary_directory)
+            filename = "pl-sa--227-a-vi-31--001-005_anonim--msza-agnus-dei.krn"
+            group_key = get_scan_group_key(filename)
+            normalized_url = "sandomierz-1551"
+            source_url = (
+                "https://bc.bdsandomierz.pl/publication/1583/edition/1551/content"
+            )
+            archive_name = "1483_Missa_in_D_DjVu.zip"
+            provider = Mock()
+            provider.get_download_info.return_value = Mock(
+                filename=archive_name,
+                content_type="application/zip",
+                size=1234,
+            )
+            find_provider.return_value = provider
+            configuration = AppConfiguration(
+                destination=parent_folder,
+                naming_profile="andrzej-kubiczek",
+            )
+
+            plans = plan_scans(
+                selected_workflow={
+                    "name": "KRN-modern",
+                    "files": [
+                        {
+                            "name": filename,
+                        }
+                    ],
+                },
+                scan_urls_by_group={
+                    group_key: {
+                        normalized_url,
+                    },
+                },
+                scan_sources_by_url={
+                    normalized_url: {
+                        "url": source_url,
+                    },
+                },
+                existing_scans_by_url={},
+                target_folders={},
+                session=Mock(),
+                configuration=configuration,
+                log=Mock(),
+            )
+
+            current_year = datetime.now(UTC).astimezone().year
+            expected_folder = (
+                parent_folder / str(current_year) / "in progress" / "modern"
+            )
+
+            self.assertEqual(len(plans), 1)
+            self.assertEqual(
+                plans[0].destination_folder,
+                expected_folder,
+            )
+            self.assertEqual(
+                plans[0].output_folder_name,
+                "1483_Missa_in_D_DjVu",
+            )
+            self.assertFalse(expected_folder.exists())
+
     @patch("core.scan_sync.find_scan_provider")
     def test_skips_completed_marta_package_folder(
         self,
