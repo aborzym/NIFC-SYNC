@@ -529,7 +529,7 @@ class FirstRunDialog(QDialog):
                 if self.new_account
                 else self.configuration_store.active_account_id()
             )
-            account_name = request.account_name.strip() or request.username.strip()
+            account_name = request.account_name.strip()
 
             self.configuration_store.validate_nifc_username(
                 request.username,

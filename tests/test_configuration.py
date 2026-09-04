@@ -439,7 +439,7 @@ class ConfigurationStoreTest(unittest.TestCase):
         self.assertEqual(accounts[0].account_id, "account-1")
         self.assertEqual(
             accounts[0].name,
-            "Dotychczasowe konto",
+            "",
         )
         self.assertEqual(
             self.store.active_account_id(),

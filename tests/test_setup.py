@@ -110,6 +110,39 @@ class CompleteSetupTest(unittest.TestCase):
         self.credential_store.save.assert_not_called()
         self.configuration_store.create_account.assert_not_called()
 
+        self.credential_store.save.assert_not_called()
+        self.configuration_store.create_account.assert_not_called()
+
+    def test_rejects_empty_account_name_before_saving_password(
+        self,
+    ):
+        self.configuration_store.validate_account_name.side_effect = ValueError(
+            "Nazwa konta nie może być pusta."
+        )
+        request = SetupRequest(
+            destination=self.destination,
+            storage_kind="local",
+            username="andrzej",
+            password="tajne-haslo",
+            account_name="   ",
+        )
+
+        with self.assertRaisesRegex(
+            SetupError,
+            "Nazwa konta nie może być pusta",
+        ):
+            complete_setup(
+                request,
+                self.configuration_store,
+                self.credential_store,
+            )
+
+        self.credential_store.save.assert_not_called()
+        self.configuration_store.save.assert_not_called()
+
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.destination = Path(self.temporary_directory.name)

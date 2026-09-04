@@ -91,7 +91,7 @@ def complete_setup(
     create_new_account=False,
 ) -> AppConfiguration:
     username = request.username.strip()
-    account_name = request.account_name.strip() or username
+    account_name = request.account_name.strip()
 
     try:
         organization_profile = get_organization_profile(request.organization_profile_id)

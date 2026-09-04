@@ -484,9 +484,7 @@ class ConfigurationStore:
             return AppConfiguration()
 
         configuration = self._load_configuration(None)
-        account_id = self._create_account_record(
-            configuration.nifc_username or "Dotychczasowe konto"
-        )
+        account_id = self._create_account_record("")
         self._save_account_configuration(
             account_id,
             configuration,
