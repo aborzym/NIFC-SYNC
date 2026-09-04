@@ -144,6 +144,12 @@ class FirstRunDialog(QDialog):
         self.account_name_edit.setPlaceholderText("Nazwa konta, np. Andrzej")
         self.account_name_edit.setClearButtonEnabled(True)
 
+        self.account_name_edit.setToolTip(
+            "Nazwa wyświetlana na liście kont, "
+            "np. imię użytkownika.\n"
+            "Nie musi być taka sama jak login NIFC."
+        )
+
         self.username_edit = QLineEdit()
         self.username_edit.setPlaceholderText("Login")
         self.username_edit.setClearButtonEnabled(True)
