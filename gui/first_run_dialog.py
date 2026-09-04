@@ -74,6 +74,7 @@ class FirstRunDialog(QDialog):
             )
         )
         self.setMinimumWidth(620)
+        self.resize(620, 680)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -112,9 +113,17 @@ class FirstRunDialog(QDialog):
         description.setWordWrap(True)
         layout.addWidget(description)
 
-        layout.addWidget(self._create_account_group())
-        layout.addWidget(self._create_organization_group())
-        layout.addWidget(self._create_storage_group())
+        account_group = self._create_account_group()
+        organization_group = self._create_organization_group()
+        storage_group = self._create_storage_group()
+
+        layout.addStretch(1)
+        layout.addWidget(account_group)
+        layout.addStretch(1)
+        layout.addWidget(organization_group)
+        layout.addStretch(1)
+        layout.addWidget(storage_group)
+        layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         save_button = buttons.button(QDialogButtonBox.Save)
@@ -189,6 +198,7 @@ class FirstRunDialog(QDialog):
         layout.addWidget(self.organization_description)
 
         self.library_paths_group = self._create_library_paths_group()
+        layout.addSpacing(20)
         layout.addWidget(self.library_paths_group)
 
         self._update_organization_description(
@@ -317,11 +327,7 @@ class FirstRunDialog(QDialog):
         return group
 
     def _choose_organization_path(self, edit):
-        starting_directory = (
-            edit.text().strip()
-            or self.destination_edit.text().strip()
-            or str(Path.home())
-        )
+        starting_directory = edit.text().strip() or self.destination_edit.text().strip()
         selected_directory = QFileDialog.getExistingDirectory(
             self,
             "Wybierz folder",
@@ -441,11 +447,17 @@ class FirstRunDialog(QDialog):
             self.password_edit.setText(suggested_credentials.password)
 
     def _choose_destination(self):
-        starting_directory = self.destination_edit.text().strip() or str(Path.home())
+        profile_id = self.organization_profile_combo.currentData()
+        dialog_title = (
+            "Wybierz folder nadrzędny"
+            if profile_id == "marta-lawrence"
+            else "Wybierz katalog roboczy"
+        )
+
         selected_directory = QFileDialog.getExistingDirectory(
             self,
-            "Wybierz katalog roboczy",
-            starting_directory,
+            dialog_title,
+            self.destination_edit.text().strip(),
         )
 
         if selected_directory:

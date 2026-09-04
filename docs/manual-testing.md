@@ -9,6 +9,12 @@
 - [ ] Wybór katalogu z `/run/user/<uid>/gvfs`.
 - [ ] Sprawdzenie, że istniejące montowanie CIFS pozostaje aktywne.
 - [ ] Odmontowanie wyłącznie testowego udziału GIO.
+- [ ] Usunięcie hardkodowanego `~/mac_transkrypcje` z `nifc_sync.py`.
+- [ ] Pobieranie katalogu terminalowego z aktywnej konfiguracji konta.
+- [ ] Zastąpienie `DEFAULT_SHARE` w `core/storage.py` adresem `network_url` aktywnego konta.
+- [ ] Usunięcie komunikatów zakładających Maca z `gui/workers.py`.
+- [ ] Zastąpienie komunikatu „Obudź Maca” ogólną informacją o niedostępnym katalogu lub udziale sieciowym.
+- [ ] Rzeczywisty test terminala z montowaniem CIFS po zmianie konfiguracji.
 
 ## Do wykonania przed wydaniem
 

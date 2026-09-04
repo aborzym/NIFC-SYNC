@@ -142,9 +142,6 @@ class CompleteSetupTest(unittest.TestCase):
 
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
-
-    def setUp(self):
-        self.temporary_directory = tempfile.TemporaryDirectory()
         self.destination = Path(self.temporary_directory.name)
         self.configuration_store = Mock(spec=ConfigurationStore)
         self.configuration_store.load.return_value = AppConfiguration(workflow="XML")
