@@ -210,9 +210,9 @@ class MainWindow(QMainWindow):
     def _create_destination_group(self):
         self.destination_group = QGroupBox("Katalog docelowy")
         layout = QHBoxLayout(self.destination_group)
-        self.destination_edit = QLineEdit(str(Path.home() / "mac_transkrypcje"))
+        self.destination_edit = QLineEdit()
+        self.destination_edit.setPlaceholderText("Katalog docelowy")
         self.destination_edit.setClearButtonEnabled(True)
-
         self.browse_button = QPushButton("Wybierz…")
         self.browse_button.clicked.connect(self._choose_destination)
 
