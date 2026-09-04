@@ -35,6 +35,8 @@
 - [x] Pełny zestaw testów automatycznych na Pythonie 3.14.
 - [x] Uruchomienie konfiguratora pierwszego startu.
 - [x] Migracja dotychczasowych ustawień bez zapisywania hasła.
+- [x] Wczytanie loginu i hasła z pliku `.nifccredentials` do konfiguratora.
+- [x] Wymuszenie własnej nazwy konta zamiast nazwy „Dotychczasowe konto”.
 - [x] Wyświetlenie profili Andrzej Borzym, Marta Lawrence i Andrzej Kubiczek.
 
 ## Uwagi

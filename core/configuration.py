@@ -121,8 +121,9 @@ class ConfigurationStore:
             if existing_username.casefold() == normalized_username:
                 raise ValueError(
                     "Konto korzystające z tego loginu "
-                    "NIFC już istnieje. Wybierz je z listy "
-                    "kont albo podaj inny login."
+                    "NIFC już istnieje. Podaj inny login "
+                    "albo anuluj to okno i wybierz istniejące "
+                    "konto z listy w głównym oknie."
                 )
 
         return username
