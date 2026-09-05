@@ -12,11 +12,23 @@ from core.network import (
     connect_and_list_smb_shares,
     discover_smb_servers,
     find_mounted_smb_path,
+    format_smb_location,
     list_smb_shares,
+    mount_smb_share,
 )
 
 
 class SmbDiscoveryTest(unittest.TestCase):
+    def test_formats_smb_location_for_display(self):
+        result = format_smb_location(
+            "smb://Mac-Studio-Andrzej.local:445/TRANSKRYPCJE%202026"
+        )
+
+        self.assertEqual(
+            result,
+            ("mac-studio-andrzej.local / TRANSKRYPCJE 2026"),
+        )
+
     @patch("core.network.list_smb_shares")
     @patch("core.network.authenticate_smb")
     def test_uses_existing_authenticated_connection(
@@ -144,6 +156,23 @@ class SmbMountPathTest(unittest.TestCase):
 
 
 class SmbAuthenticationTest(unittest.TestCase):
+    @patch("core.network.authenticate_smb")
+    @patch("core.network.find_mounted_smb_path")
+    def test_accepts_already_mounted_share(
+        self,
+        find_mounted_path,
+        authenticate,
+    ):
+        find_mounted_path.return_value = Path("/run/user/1000/gvfs/zamontowany-udzial")
+
+        mount_smb_share(
+            "smb://mac.local/TRANSKRYPCJE%202026",
+            "andrzej",
+            "tajne-haslo",
+        )
+
+        authenticate.assert_not_called()
+
     @patch("core.network._run_gio_mount")
     def test_uses_interactive_terminal_mount(
         self,

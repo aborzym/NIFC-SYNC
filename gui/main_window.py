@@ -26,6 +26,7 @@ from core.credentials import (
     CredentialStore,
     CredentialStoreError,
 )
+from core.network import format_smb_location
 from gui.first_run_dialog import FirstRunDialog
 from gui.scan_dialog import ScanSelectionDialog
 from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
@@ -210,9 +211,10 @@ class MainWindow(QMainWindow):
     def _create_destination_group(self):
         self.destination_group = QGroupBox("Katalog docelowy")
         layout = QHBoxLayout(self.destination_group)
+        self.destination_path = None
         self.destination_edit = QLineEdit()
         self.destination_edit.setPlaceholderText("Katalog docelowy")
-        self.destination_edit.setClearButtonEnabled(True)
+        self.destination_edit.setReadOnly(True)
         self.browse_button = QPushButton("Wybierz…")
         self.browse_button.clicked.connect(self._choose_destination)
 
@@ -220,6 +222,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.browse_button)
 
         return self.destination_group
+
+    def _destination_display_text(
+        self,
+        configuration,
+    ):
+        if configuration.destination is None:
+            return ""
+
+        if configuration.storage_kind == "mounted" and configuration.network_url:
+            return format_smb_location(configuration.network_url)
+
+        return str(configuration.destination)
 
     def _choose_destination(self):
         configuration = self.configuration_store.load()
@@ -233,14 +247,24 @@ class MainWindow(QMainWindow):
             else "Wybierz katalog docelowy"
         )
 
+        starting_directory = (
+            str(self.destination_path) if self.destination_path is not None else ""
+        )
         selected_directory = QFileDialog.getExistingDirectory(
             self,
             dialog_title,
-            self.destination_edit.text().strip(),
+            starting_directory,
         )
 
         if selected_directory:
-            self.destination_edit.setText(selected_directory)
+            self.destination_path = Path(selected_directory)
+            updated_configuration = replace(
+                configuration,
+                destination=self.destination_path,
+            )
+            self.destination_edit.setText(
+                self._destination_display_text(updated_configuration)
+            )
 
     def _open_settings(self):
         if any(
@@ -429,7 +453,7 @@ class MainWindow(QMainWindow):
 
     def _update_sync_button(self):
         has_catalog = bool(self.workflows)
-        has_destination = bool(self.destination_edit.text().strip())
+        has_destination = self.destination_path is not None
         self.sync_button.setEnabled(
             has_catalog and has_destination and self.sync_thread is None
         )
@@ -458,10 +482,9 @@ class MainWindow(QMainWindow):
             self._catalog_failed("Nie wybrano rodzaju transkrypcji.")
             return
 
-        destination_value = self.destination_edit.text().strip()
         configuration = replace(
             self.configuration_store.load(),
-            destination=Path(destination_value),
+            destination=self.destination_path,
             workflow=self._selected_workflow_name(),
         )
 
@@ -784,12 +807,8 @@ class MainWindow(QMainWindow):
             self.destination_group.setTitle("Katalog docelowy")
             self.destination_edit.setPlaceholderText("Katalog docelowy")
 
-        destination = (
-            str(configuration.destination)
-            if configuration.destination is not None
-            else ""
-        )
-        self.destination_edit.setText(destination)
+        self.destination_path = configuration.destination
+        self.destination_edit.setText(self._destination_display_text(configuration))
 
         radio_buttons = {
             "KRN-diplomatic": self.diplomatic_radio,
@@ -818,10 +837,9 @@ class MainWindow(QMainWindow):
             self.saveGeometry(),
         )
 
-        destination_value = self.destination_edit.text().strip()
         configuration = replace(
             self.configuration_store.load(),
-            destination=(Path(destination_value) if destination_value else None),
+            destination=self.destination_path,
             workflow=self._selected_workflow_name(),
         )
         self.configuration_store.save(configuration)

@@ -22,6 +22,38 @@ class SmbResource:
     uri: str
 
 
+def format_smb_location(
+    share_uri,
+    destination=None,
+    gvfs_root=None,
+):
+    parsed_uri = urlparse(share_uri)
+
+    if parsed_uri.scheme.casefold() != "smb" or parsed_uri.hostname is None:
+        return str(share_uri)
+
+    location_parts = [
+        parsed_uri.hostname,
+        *(unquote(part) for part in parsed_uri.path.split("/") if part),
+    ]
+
+    if destination is not None:
+        mounted_path = find_mounted_smb_path(
+            share_uri,
+            gvfs_root=gvfs_root,
+        )
+
+        if mounted_path is not None:
+            try:
+                relative_path = Path(destination).relative_to(mounted_path)
+            except ValueError:
+                pass
+            else:
+                location_parts.extend(relative_path.parts)
+
+    return " / ".join(location_parts)
+
+
 def find_mounted_smb_path(
     share_uri,
     gvfs_root=None,
@@ -283,6 +315,9 @@ def mount_smb_share(
     password,
     domain="WORKGROUP",
 ):
+    if find_mounted_smb_path(share_uri) is not None:
+        return
+
     authenticate_smb(
         share_uri,
         username,
