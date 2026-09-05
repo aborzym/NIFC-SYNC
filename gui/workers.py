@@ -11,6 +11,7 @@ from core.cleanup import cleanup_scan_staging_folders
 from core.client import NifcClient
 from core.filesystem import format_file_size
 from core.inventory import build_storage_inventory
+from core.network import format_smb_location
 from core.scan_sync import download_scan_plans, plan_scans
 from core.sync import sync_transcriptions
 
@@ -94,6 +95,14 @@ class SyncWorker(QObject):
         self.configuration = configuration
         self.destination = configuration.destination
 
+        if configuration.storage_kind == "mounted" and configuration.network_url:
+            self.destination_display = format_smb_location(
+                configuration.network_url,
+                destination=self.destination,
+            )
+        else:
+            self.destination_display = str(self.destination)
+
     @Slot()
     def run(self):
         try:
@@ -104,11 +113,10 @@ class SyncWorker(QObject):
 
             if not self.destination.is_dir():
                 raise RuntimeError(
-                    f"Katalog docelowy nie jest dostępny: {self.destination}"
+                    f"Katalog docelowy nie jest dostępny: {self.destination_display}"
                 )
 
-            self.log.emit(f"Katalog docelowy: {self.destination}")
-
+            self.log.emit(f"Katalog docelowy: {self.destination_display}")
             self.log.emit("Analiza danych z NIFC…")
             self.progress.emit(10)
             scan_urls_by_group, scan_sources_by_url = build_scan_indexes(

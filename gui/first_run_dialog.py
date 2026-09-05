@@ -33,7 +33,10 @@ from core.libraries import (
     library_transcriptions_path_key,
     list_known_libraries,
 )
-from core.network import find_mounted_smb_path
+from core.network import (
+    find_mounted_smb_path,
+    format_smb_location,
+)
 from core.organization_profiles import (
     list_organization_profiles,
 )
@@ -405,10 +408,10 @@ class FirstRunDialog(QDialog):
         layout.addWidget(self.network_options)
 
         destination_row = QHBoxLayout()
+        self.destination_path = None
         self.destination_edit = QLineEdit()
         self.destination_edit.setPlaceholderText("Katalog docelowy")
-        self.destination_edit.setClearButtonEnabled(True)
-
+        self.destination_edit.setReadOnly(True)
         browse_button = QPushButton("Wybierz…")
         browse_button.clicked.connect(self._choose_destination)
 
@@ -423,6 +426,21 @@ class FirstRunDialog(QDialog):
         self._update_storage_labels(self.organization_profile_combo.currentData())
 
         return self.storage_group
+
+    def _set_destination(self, destination):
+        self.destination_path = Path(destination) if destination is not None else None
+
+        if self.destination_path is None:
+            display_text = ""
+        elif self.mounted_radio.isChecked() and self.network_url_edit.text().strip():
+            display_text = format_smb_location(
+                self.network_url_edit.text().strip(),
+                destination=self.destination_path,
+            )
+        else:
+            display_text = str(self.destination_path)
+
+        self.destination_edit.setText(display_text)
 
     def _restore_values(self, suggested_credentials):
         configuration = self.configuration_store.load()
@@ -447,12 +465,14 @@ class FirstRunDialog(QDialog):
                 self.account_name_edit.setText(account.name)
                 break
 
-        if configuration.destination is not None:
-            self.destination_edit.setText(str(configuration.destination))
         self.network_url_edit.setText(configuration.network_url)
         self.network_url_edit.setReadOnly(True)
+
         if configuration.storage_kind == "mounted":
             self.mounted_radio.setChecked(True)
+
+        if configuration.destination is not None:
+            self._set_destination(configuration.destination)
 
         if configuration.nifc_username:
             self.username_edit.setText(configuration.nifc_username)
@@ -476,11 +496,15 @@ class FirstRunDialog(QDialog):
         selected_directory = QFileDialog.getExistingDirectory(
             self,
             dialog_title,
-            self.destination_edit.text().strip(),
+            (
+                str(self.destination_path)
+                if self.destination_path is not None
+                else str(Path.home())
+            ),
         )
 
         if selected_directory:
-            self.destination_edit.setText(selected_directory)
+            self._set_destination(selected_directory)
 
     def _connect_to_network_share(self):
         dialog = NetworkBrowserDialog(self)
@@ -523,7 +547,7 @@ class FirstRunDialog(QDialog):
         )
 
         if selected_directory:
-            self.destination_edit.setText(selected_directory)
+            self._set_destination(selected_directory)
 
     def _set_network_options_visible(self, visible):
         top_left = self.frameGeometry().topLeft()
@@ -546,7 +570,6 @@ class FirstRunDialog(QDialog):
         return "local"
 
     def _complete_setup(self):
-        destination_value = self.destination_edit.text().strip()
         organization_paths = tuple(
             OrganizationPath(
                 key=key,
@@ -557,7 +580,7 @@ class FirstRunDialog(QDialog):
         )
 
         request = SetupRequest(
-            destination=(Path(destination_value) if destination_value else None),
+            destination=self.destination_path,
             storage_kind=self._selected_storage_kind(),
             username=self.username_edit.text(),
             password=self.password_edit.text(),
