@@ -1,5 +1,7 @@
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from core.network import (
@@ -9,6 +11,7 @@ from core.network import (
     authenticate_smb,
     connect_and_list_smb_shares,
     discover_smb_servers,
+    find_mounted_smb_path,
     list_smb_shares,
 )
 
@@ -112,6 +115,32 @@ class SmbDiscoveryTest(unittest.TestCase):
                 ),
             ),
         )
+
+
+class SmbMountPathTest(unittest.TestCase):
+    def test_finds_mounted_share_in_gvfs(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            gvfs_root = Path(temporary_directory)
+            expected = gvfs_root / (
+                "smb-share:server=mac-studio-andrzej.local,share=transkrypcje%202026"
+            )
+            expected.mkdir()
+
+            result = find_mounted_smb_path(
+                ("smb://Mac-Studio-Andrzej.local:445/TRANSKRYPCJE%202026"),
+                gvfs_root=gvfs_root,
+            )
+
+            self.assertEqual(result, expected)
+
+    def test_returns_none_for_unmounted_share(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result = find_mounted_smb_path(
+                "smb://mac.local/NIE-ISTNIEJE",
+                gvfs_root=Path(temporary_directory),
+            )
+
+            self.assertIsNone(result)
 
 
 class SmbAuthenticationTest(unittest.TestCase):

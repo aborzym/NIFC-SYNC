@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -34,6 +33,7 @@ from core.libraries import (
     library_transcriptions_path_key,
     list_known_libraries,
 )
+from core.network import find_mounted_smb_path
 from core.organization_profiles import (
     list_organization_profiles,
 )
@@ -495,10 +495,21 @@ class FirstRunDialog(QDialog):
 
         self.network_url_edit.setText(share.uri)
 
-        if sys.platform == "darwin":
+        if sys.platform.startswith("linux"):
+            starting_directory = find_mounted_smb_path(share.uri)
+
+            if starting_directory is None:
+                QMessageBox.warning(
+                    self,
+                    "Nie znaleziono zamontowanego udziału",
+                    (
+                        "Udział został zamontowany, ale program "
+                        "nie odnalazł jego lokalnego katalogu."
+                    ),
+                )
+                return
+        elif sys.platform == "darwin":
             starting_directory = Path("/Volumes")
-        elif sys.platform.startswith("linux"):
-            starting_directory = Path("/run/user") / str(os.getuid()) / "gvfs"
         else:
             starting_directory = Path.home()
 

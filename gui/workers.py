@@ -186,8 +186,9 @@ class SyncWorker(QObject):
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(
                 "Katalog docelowy nie odpowiada. "
-                "Mac lub udział sieciowy może być uśpiony albo "
-                "niedostępny. Obudź Maca i spróbuj ponownie."
+                "Dysk lub udział sieciowy może być "
+                "niedostępny. Sprawdź połączenie "
+                "i spróbuj ponownie."
             ) from error
 
         if result.returncode != 0:

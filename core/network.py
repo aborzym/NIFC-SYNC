@@ -2,7 +2,12 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from urllib.parse import quote
+from pathlib import Path
+from urllib.parse import (
+    quote,
+    unquote,
+    urlparse,
+)
 
 import pexpect
 
@@ -15,6 +20,58 @@ class NetworkShareError(RuntimeError):
 class SmbResource:
     display_name: str
     uri: str
+
+
+def find_mounted_smb_path(
+    share_uri,
+    gvfs_root=None,
+):
+    parsed_uri = urlparse(share_uri)
+
+    if parsed_uri.scheme.casefold() != "smb" or parsed_uri.hostname is None:
+        return None
+
+    path_parts = tuple(unquote(part) for part in parsed_uri.path.split("/") if part)
+
+    if not path_parts:
+        return None
+
+    share_name = path_parts[0]
+    root = (
+        Path(gvfs_root)
+        if gvfs_root is not None
+        else (Path("/run/user") / str(os.getuid()) / "gvfs")
+    )
+
+    try:
+        mount_paths = tuple(root.iterdir())
+    except OSError:
+        return None
+
+    for mount_path in mount_paths:
+        mount_type, separator, raw_attributes = mount_path.name.partition(":")
+
+        if not separator or mount_type != "smb-share":
+            continue
+
+        attributes = {}
+
+        for raw_attribute in raw_attributes.split(","):
+            key, attribute_separator, value = raw_attribute.partition("=")
+
+            if attribute_separator:
+                attributes[key] = unquote(value)
+
+        mounted_server = attributes.get("server", "")
+        mounted_share = attributes.get("share", "")
+
+        if (
+            mounted_server.casefold() == parsed_uri.hostname.casefold()
+            and mounted_share.casefold() == share_name.casefold()
+        ):
+            return mount_path.joinpath(*path_parts[1:])
+
+    return None
 
 
 def _run_gio(
