@@ -4,6 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QThread, QTimer
 from PySide6.QtGui import QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -74,6 +75,14 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(self._create_header())
         main_layout.addWidget(self._create_workflow_group())
         main_layout.addWidget(self._create_destination_group())
+
+        self.verify_scans_checkbox = QCheckBox("Dokładne sprawdzenie skanów")
+        self.verify_scans_checkbox.setToolTip(
+            "Sprawdza obecność i rozmiar każdego pliku "
+            "w pobranych pakietach skanów.\n"
+            "Na katalogu sieciowym może to potrwać znacznie dłużej."
+        )
+        main_layout.addWidget(self.verify_scans_checkbox)
 
         self.sync_button = QPushButton("Synchronizuj")
         self.sync_button.setObjectName("primaryButton")
@@ -502,6 +511,7 @@ class MainWindow(QMainWindow):
             selected_workflow=selected_workflow,
             available_workflows=list(self.workflows.values()),
             configuration=configuration,
+            verify_scan_sizes=(self.verify_scans_checkbox.isChecked()),
         )
         self.sync_worker.moveToThread(self.sync_thread)
 
@@ -644,6 +654,7 @@ class MainWindow(QMainWindow):
         self.xml_radio.setEnabled(enabled)
         self.destination_edit.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
+        self.verify_scans_checkbox.setEnabled(enabled)
         self.account_combo.setEnabled(enabled)
         self.connection_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
