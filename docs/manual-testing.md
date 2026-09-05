@@ -14,6 +14,12 @@
 - [x] Usunięcie nieużywanej obsługi CIFS i stałej `DEFAULT_SHARE`.
 - [x] Usunięcie komunikatów zakładających Maca z `gui/workers.py`.
 - [x] Zastąpienie komunikatu „Obudź Maca” ogólną informacją o niedostępnym katalogu lub udziale sieciowym.
+- [x] Zbudowanie pakietu `nifc-sync_4.0.0_amd64.deb`.
+- [x] Instalacja pakietu 4.0.0 wraz z zależnościami GIO, GVfs i keyringu.
+- [x] Uruchomienie aplikacji zainstalowanej w `/opt/nifc-sync`.
+- [x] Wczytanie aktywnego konta i ustawień przez zainstalowaną aplikację.
+- [x] Synchronizacja GUI z katalogiem zamontowanym przez GIO.
+- [x] Porównanie szybkiego i dokładnego sprawdzania skanów przez SMB.
 - [ ] Rzeczywisty test terminala z aktywnym kontem i katalogiem lokalnym.
 - [ ] Rzeczywisty test terminala z katalogiem zamontowanym przez GIO.
 
@@ -35,9 +41,9 @@
 - [ ] Wyświetlenie ostrzeżenia, gdy nie można usunąć poprzedniego hasła.
 - [ ] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
 - [ ] Zachowanie hasła dla starszej konfiguracji, gdy login jest współdzielony przez inne konto.
-- [ ] Wyświetlenie folderu docelowego w oknie wyboru skanów.
-- [ ] Dopasowanie wszystkich kolumn do szerokości okna bez poziomego przewijania.
-- [ ] Ręczna zmiana szerokości kolumn bez wypychania pozostałych poza tabelę.
+- [x] Wyświetlenie folderu docelowego w oknie wyboru skanów.
+- [x] Dopasowanie wszystkich kolumn do szerokości okna bez poziomego przewijania.
+- [x] Ręczna zmiana szerokości kolumn bez wypychania pozostałych poza tabelę.
 
 ## Wykonane na macOS
 
