@@ -225,7 +225,11 @@ class MainWindow(QMainWindow):
         configuration = self.configuration_store.load()
         dialog_title = (
             "Wybierz folder nadrzędny"
-            if configuration.naming_profile == "marta-lawrence"
+            if configuration.naming_profile
+            in (
+                "marta-lawrence",
+                "andrzej-kubiczek",
+            )
             else "Wybierz katalog docelowy"
         )
 
@@ -771,6 +775,11 @@ class MainWindow(QMainWindow):
         if configuration.naming_profile == "marta-lawrence":
             self.destination_group.setTitle("Folder nadrzędny")
             self.destination_edit.setPlaceholderText("Folder nadrzędny, np. Pulpit")
+        elif configuration.naming_profile == "andrzej-kubiczek":
+            self.destination_group.setTitle("Folder nadrzędny")
+            self.destination_edit.setPlaceholderText(
+                "Folder nadrzędny katalogów rocznych"
+            )
         else:
             self.destination_group.setTitle("Katalog docelowy")
             self.destination_edit.setPlaceholderText("Katalog docelowy")

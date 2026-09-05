@@ -350,6 +350,21 @@ class FirstRunDialog(QDialog):
             )
             return
 
+        if profile_id == "andrzej-kubiczek":
+            self.storage_group.setTitle("Folder nadrzędny")
+            self.destination_edit.setPlaceholderText(
+                "Folder nadrzędny katalogów rocznych"
+            )
+            self.destination_edit.setToolTip(
+                "<b>Folder nadrzędny</b><br>"
+                "Program zapisze pliki w katalogu "
+                "&lt;rok&gt;/in progress, osobno dla "
+                "workflow diplomatic, modern i XML.<br><br>"
+                "Foldery zostaną utworzone dopiero podczas "
+                "pierwszej synchronizacji."
+            )
+            return
+
         self.storage_group.setTitle("Katalog roboczy")
         self.destination_edit.setPlaceholderText("Katalog docelowy")
         self.destination_edit.setToolTip("")
@@ -450,7 +465,11 @@ class FirstRunDialog(QDialog):
         profile_id = self.organization_profile_combo.currentData()
         dialog_title = (
             "Wybierz folder nadrzędny"
-            if profile_id == "marta-lawrence"
+            if profile_id
+            in (
+                "marta-lawrence",
+                "andrzej-kubiczek",
+            )
             else "Wybierz katalog roboczy"
         )
 

@@ -40,8 +40,9 @@ ORGANIZATION_PROFILES = (
         display_name="Andrzej Kubiczek",
         layout_kind="workflow-status",
         description=(
-            "Gotowe pliki według workflow; katalogi "
-            "robocze są uwzględniane przy wyszukiwaniu."
+            "Transkrypcje luzem i źródła w osobnych folderach "
+            "pakietów, według workflow, w katalogu "
+            "<rok>/in progress."
         ),
     ),
 )
