@@ -1,3 +1,4 @@
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -5,7 +6,6 @@ from pathlib import Path
 from core.filesystem import find_existing_scores
 from core.scan_manifest import validate_scan_manifest
 from core.scans import folder_matches_scan_group
-
 
 NUMBER_PATTERN = re.compile(r"(?<!\d)(\d{3})\s*-\s*")
 
@@ -22,11 +22,9 @@ def build_storage_inventory(
     scan_urls_by_group,
 ):
     base_dir = Path(base_dir)
-    folder_names = tuple(
-        path.name
-        for path in base_dir.iterdir()
-        if path.is_dir()
-    )
+
+    with os.scandir(base_dir) as entries:
+        folder_names = tuple(entry.name for entry in entries if entry.is_dir())
 
     scan_folders_by_url = {}
 
@@ -49,9 +47,14 @@ def build_storage_inventory(
     for normalized_url, folders in scan_folders_by_url.items():
         for folder in folders:
             scans_folder = folder / "skany"
-            if validate_scan_manifest(scans_folder) is False:
+            if (
+                validate_scan_manifest(
+                    scans_folder,
+                    verify_sizes=False,
+                )
+                is False
+            ):
                 continue
-
             existing_scores = find_existing_scores(folder)
 
             if not existing_scores:
