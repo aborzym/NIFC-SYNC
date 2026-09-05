@@ -3,7 +3,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="3.0.0"
+version="4.0.0"
 package_name="nifc-sync_${version}_amd64.deb"
 package_root="${project_dir}/build/linux-package"
 application_dir="${package_root}/opt/nifc-sync"
