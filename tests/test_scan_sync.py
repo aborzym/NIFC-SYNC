@@ -513,6 +513,66 @@ class DownloadScanPlansTest(unittest.TestCase):
                 "1483_Missa_in_D_DjVu",
             )
 
+    @patch(
+        "core.scan_sync.find_scan_provider",
+        return_value=None,
+    )
+    def test_reports_unsupported_source(
+        self,
+        _find_provider,
+    ):
+        filename = "pl-wtm--r-2017_smietanski-emil-wladyslaw-na-wawelu.krn"
+        group_key = get_scan_group_key(filename)
+        normalized_url = "wtm-r-2017"
+        source_url = "http://repozytorium.nifc.pl/skany/pl-wtm-nut--r2017"
+        scan_issues = []
+
+        plans = plan_scans(
+            selected_workflow={
+                "files": [
+                    {
+                        "name": filename,
+                    },
+                ],
+            },
+            scan_urls_by_group={
+                group_key: {
+                    normalized_url,
+                },
+            },
+            scan_sources_by_url={
+                normalized_url: {
+                    "url": source_url,
+                },
+            },
+            existing_scans_by_url={},
+            target_folders={
+                filename: Path("/tmp/project"),
+            },
+            session=Mock(),
+            scan_issues=scan_issues,
+            log=Mock(),
+        )
+
+        self.assertEqual(plans, ())
+        self.assertEqual(len(scan_issues), 1)
+        self.assertEqual(
+            scan_issues[0].group_key,
+            group_key,
+        )
+        self.assertEqual(
+            scan_issues[0].transcription_names,
+            (filename,),
+        )
+        self.assertEqual(
+            scan_issues[0].source_url,
+            source_url,
+        )
+        self.assertIn(
+            "Brak automatycznej obsługi",
+            scan_issues[0].reason,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -170,6 +170,8 @@ class SyncWorker(QObject):
             self.log.emit("Kontrola skanów…")
             self.progress.emit(75)
             session = requests.Session()
+            scan_issues = []
+
             scan_plans = plan_scans(
                 self.selected_workflow,
                 scan_urls_by_group,
@@ -178,6 +180,7 @@ class SyncWorker(QObject):
                 transcription_result.target_folders,
                 session,
                 configuration=self.configuration,
+                scan_issues=scan_issues,
                 log=self.log.emit,
             )
             self.progress.emit(80)
@@ -185,13 +188,13 @@ class SyncWorker(QObject):
             self.completed.emit(
                 {
                     "created": transcription_result.created_count,
-                    "downloaded": (transcription_result.downloaded_count),
+                    "downloaded": transcription_result.downloaded_count,
                     "skipped": transcription_result.skipped_count,
                     "scan_packages": 0,
+                    "scan_issues": tuple(scan_issues),
                 },
                 scan_plans,
             )
-
         except Exception as error:  # noqa: BLE001
             self.failed.emit(str(error))
         finally:

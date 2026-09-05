@@ -183,7 +183,19 @@ def main():
     print(f"Pobrano transkrypcji:        {transcription_result.downloaded_count}")
     print(f"Pobrano pakietów skanów:     {scan_result.downloaded_packages}")
     print(f"Pominięto transkrypcji:      {transcription_result.skipped_count}")
+    print(f"Źródła do pobrania ręcznego: {len(scan_result.scan_issues)}")
     print("─" * 32)
+    if scan_result.scan_issues:
+        print("\nSKANY WYMAGAJĄCE RĘCZNEGO POBRANIA:")
+
+        for issue in scan_result.scan_issues:
+            print(f"\nGRUPA: {issue.group_key}")
+            print(f"POWÓD: {issue.reason}")
+
+            for transcription_name in issue.transcription_names:
+                print(f"UTWÓR: {transcription_name}")
+
+            print(f"URL-scan: {issue.source_url}")
 
 
 if __name__ == "__main__":

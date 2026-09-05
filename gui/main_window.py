@@ -541,6 +541,10 @@ class MainWindow(QMainWindow):
         self.pending_scan_plans = scan_plans
 
     def _finish_synchronization(self, summary):
+        scan_issues = summary.get(
+            "scan_issues",
+            (),
+        )
         self._stop_activity_indicator()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
@@ -550,7 +554,19 @@ class MainWindow(QMainWindow):
         self.log_view.append(f"Pobrano transkrypcji: {summary['downloaded']}")
         self.log_view.append(f"Pobrano pakietów skanów: {summary['scan_packages']}")
         self.log_view.append(f"Pominięto transkrypcji: {summary['skipped']}")
+        self.log_view.append(f"Źródła wymagające ręcznego pobrania: {len(scan_issues)}")
         self.log_view.append("────────────────────────────────")
+        if scan_issues:
+            self.log_view.append("\nSKANY WYMAGAJĄCE RĘCZNEGO POBRANIA:")
+
+            for issue in scan_issues:
+                self.log_view.append(f"\nGRUPA: {issue.group_key}")
+                self.log_view.append(f"POWÓD: {issue.reason}")
+
+                for transcription_name in issue.transcription_names:
+                    self.log_view.append(f"UTWÓR: {transcription_name}")
+
+                self.log_view.append(f"URL-scan: {issue.source_url}")
         self.statusBar().showMessage("Gotowe")
         self.progress_stage_label.clear()
 

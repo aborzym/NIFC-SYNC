@@ -32,8 +32,17 @@ class ScanDownloadRequest:
 
 
 @dataclass(frozen=True)
+class ScanIssue:
+    group_key: str
+    transcription_names: tuple[str, ...]
+    source_url: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class ScanSyncResult:
     downloaded_packages: int
+    scan_issues: tuple[ScanIssue, ...] = ()
 
 
 def plan_scans(
@@ -44,8 +53,10 @@ def plan_scans(
     target_folders,
     session,
     configuration=None,
+    scan_issues=None,
     log=print,
 ):
+
     plans = []
     selected_scan_groups = {}
     uses_named_scan_folders = (
@@ -140,9 +151,23 @@ def plan_scans(
         provider = find_scan_provider(source["url"])
 
         if provider is None:
+            reason = "Brak automatycznej obsługi tego źródła skanów."
             log("BRAK OBSŁUGI AUTOMATYCZNEGO POBIERANIA DLA TEJ BIBLIOTEKI")
-            continue
+            log(f"URL-scan: {source['url']}")
 
+            if scan_issues is not None:
+                scan_issues.append(
+                    ScanIssue(
+                        group_key=group_key,
+                        transcription_names=tuple(
+                            api_file["name"] for api_file in group_files
+                        ),
+                        source_url=source["url"],
+                        reason=reason,
+                    )
+                )
+
+            continue
         try:
             download_info = provider.get_download_info(
                 session,
@@ -294,6 +319,7 @@ def sync_scans(
     configuration=None,
     log=print,
 ):
+    scan_issues = []
     plans = plan_scans(
         selected_workflow,
         scan_urls_by_group,
@@ -302,6 +328,7 @@ def sync_scans(
         target_folders,
         session,
         configuration=configuration,
+        scan_issues=scan_issues,
         log=log,
     )
     selected_plans = []
@@ -320,9 +347,14 @@ def sync_scans(
     else:
         adapted_progress = None
 
-    return download_scan_plans(
+    download_result = download_scan_plans(
         session,
         selected_plans,
         progress_callback=adapted_progress,
         log=log,
+    )
+
+    return ScanSyncResult(
+        downloaded_packages=(download_result.downloaded_packages),
+        scan_issues=tuple(scan_issues),
     )
