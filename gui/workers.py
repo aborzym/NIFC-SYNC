@@ -13,6 +13,7 @@ from core.filesystem import format_file_size
 from core.inventory import build_storage_inventory
 from core.network import format_smb_location
 from core.scan_sync import download_scan_plans, plan_scans
+from core.scans import get_scan_group_key
 from core.sync import sync_transcriptions
 
 
@@ -123,12 +124,25 @@ class SyncWorker(QObject):
                 self.available_workflows
             )
 
+            selected_group_keys = {
+                get_scan_group_key(api_file["name"])
+                for api_file in self.selected_workflow["files"]
+            }
+            inventory_scan_urls_by_group = {
+                group_key: scan_urls_by_group.get(
+                    group_key,
+                    set(),
+                )
+                for group_key in selected_group_keys
+            }
+
             self.log.emit("Inwentaryzacja katalogu docelowego…")
             self.progress.emit(20)
             inventory = build_storage_inventory(
                 self.destination,
-                scan_urls_by_group,
+                inventory_scan_urls_by_group,
             )
+
             self.progress.emit(40)
 
             self.log.emit("Synchronizacja transkrypcji…")

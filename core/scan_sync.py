@@ -102,8 +102,11 @@ def plan_scans(
                 key=lambda item: item[0].name,
             ):
                 log(f"  FOLDER: {folder.name}")
-                log(f"  LICZBA PLIKÓW: {len(score_files)}")
 
+                if score_files is None:
+                    log("  ZAWARTOŚĆ: wykryta (szybkie sprawdzenie)")
+                else:
+                    log(f"  LICZBA PLIKÓW: {len(score_files)}")
             continue
 
         primary_file = min(

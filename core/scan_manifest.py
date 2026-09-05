@@ -136,3 +136,38 @@ def validate_scan_manifest(
         json.JSONDecodeError,
     ):
         return False
+
+
+def scan_manifest_file_paths(
+    scans_folder,
+):
+    scans_folder = Path(scans_folder)
+    manifest_path = scans_folder / MANIFEST_FILENAME
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        files = manifest["files"]
+        paths = []
+
+        for entry in files:
+            relative_path = PurePosixPath(entry["path"])
+
+            if (
+                relative_path.is_absolute()
+                or ".." in relative_path.parts
+                or "\\" in entry["path"]
+            ):
+                return ()
+
+            paths.append(scans_folder.joinpath(*relative_path.parts))
+
+        return tuple(paths)
+
+    except (
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        return ()

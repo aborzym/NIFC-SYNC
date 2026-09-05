@@ -3,8 +3,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.filesystem import find_existing_scores
-from core.scan_manifest import validate_scan_manifest
+from core.filesystem import SCORE_EXTENSIONS
+from core.scan_manifest import scan_manifest_file_paths, validate_scan_manifest
 from core.scans import folder_matches_scan_group
 
 NUMBER_PATTERN = re.compile(r"(?<!\d)(\d{3})\s*-\s*")
@@ -47,19 +47,37 @@ def build_storage_inventory(
     for normalized_url, folders in scan_folders_by_url.items():
         for folder in folders:
             scans_folder = folder / "skany"
-            if (
-                validate_scan_manifest(
-                    scans_folder,
-                    verify_sizes=False,
+            manifest_status = validate_scan_manifest(
+                scans_folder,
+                verify_sizes=False,
+            )
+
+            if manifest_status is False:
+                continue
+
+            if manifest_status is True:
+                existing_scores = tuple(
+                    path
+                    for path in scan_manifest_file_paths(scans_folder)
+                    if path.suffix.lower() in SCORE_EXTENSIONS
                 )
-                is False
-            ):
-                continue
-            existing_scores = find_existing_scores(folder)
 
-            if not existing_scores:
-                continue
+            else:
+                try:
+                    with os.scandir(scans_folder) as entries:
+                        has_scan_content = next(entries, None) is not None
+                except OSError:
+                    has_scan_content = False
 
+                if not has_scan_content:
+                    continue
+
+                existing_scores = None
+
+            existing_scans_by_url.setdefault(
+                normalized_url,
+                {},
+            )[folder] = existing_scores
             existing_scans_by_url.setdefault(
                 normalized_url,
                 {},
