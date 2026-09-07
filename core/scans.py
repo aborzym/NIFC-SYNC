@@ -1,5 +1,6 @@
 import base64
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -7,7 +8,6 @@ from providers import (
     polish_music_sources,
     sandomierz,
 )
-
 
 KRN_URL_SCAN_PATTERN = re.compile(
     r"^!!!URL-scan:\s*(.+?)\s*$",
@@ -17,6 +17,21 @@ KRN_URL_SCAN_PATTERN = re.compile(
 XML_URL_SCAN_PATTERN = re.compile(
     r"@URL-scan:\s*([^<\r\n]+)",
 )
+
+KRN_REFERENCE_PATTERN = re.compile(
+    r"^!!!([^:]+):\s*(.*?)\s*$",
+    re.MULTILINE,
+)
+
+
+@dataclass(frozen=True)
+class ScanSourceMetadata:
+    rism_id: str = ""
+    siglum: str = ""
+    shelfmark: str = ""
+    composer: str = ""
+    title: str = ""
+
 
 PART_NUMBER_PATTERN = re.compile(r"(?<=-\d{3})-\d{3}$")
 
@@ -28,6 +43,46 @@ SCAN_PROVIDERS = (
 
 def clean_scan_url(value):
     return value.strip().split(maxsplit=1)[0]
+
+
+def extract_scan_source_metadata(
+    api_file,
+):
+    suffix = Path(api_file["name"]).suffix.lower()
+
+    if suffix != ".krn":
+        return ScanSourceMetadata()
+
+    text = base64.b64decode(api_file["content"]).decode(
+        "utf-8",
+        errors="replace",
+    )
+    values = {
+        key.strip(): value.strip() for key, value in KRN_REFERENCE_PATTERN.findall(text)
+    }
+
+    return ScanSourceMetadata(
+        rism_id=values.get(
+            "NIFC-rismSourceID",
+            "",
+        ),
+        siglum=values.get(
+            "SMS-siglum",
+            "",
+        ),
+        shelfmark=values.get(
+            "SMS-shelfmark",
+            "",
+        ),
+        composer=values.get(
+            "COM",
+            "",
+        ),
+        title=values.get(
+            "OTL",
+            "",
+        ),
+    )
 
 
 def extract_scan_url(api_file):

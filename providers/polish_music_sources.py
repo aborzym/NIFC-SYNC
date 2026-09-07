@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import tempfile
@@ -22,6 +23,14 @@ STORAGE_URL = (
     "museum/manuscripts/{manuscript_id}/{filename}"
 )
 
+SEARCH_API_URL = (
+    "https://api.nifc.pl/v2/index.php/Search_engine_popc2/search/0/{limit}?lang=pl"
+)
+
+MANUSCRIPT_PAGE_URL = (
+    "https://polish.musicsources.pl/pl/lokalizacje/galeria/rekopisy/{manuscript_id}/1"
+)
+
 
 @dataclass(frozen=True)
 class ScanInfo:
@@ -38,6 +47,16 @@ class DownloadInfo:
     manuscript_id: str
     title: str
     scans: tuple[ScanInfo, ...]
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    manuscript_id: str
+    title: str
+    siglum: str
+    shelfmark: str
+    rism_id: str
+    url: str
 
 
 def supports(scan_url: str) -> bool:
@@ -109,6 +128,122 @@ def get_download_info(
         title=title,
         scans=tuple(scans),
     )
+
+
+def _normalize_reference(value):
+    return re.sub(
+        r"[\W_]+",
+        "",
+        str(value or "").casefold(),
+    )
+
+
+def _search_api(
+    session,
+    keyword,
+    limit=50,
+):
+    response = session.post(
+        SEARCH_API_URL.format(limit=limit),
+        data={
+            "data": json.dumps(
+                {
+                    "keyword": keyword,
+                    "search_fields": [],
+                },
+                ensure_ascii=False,
+            ),
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if not isinstance(data, list):
+        raise TypeError(
+            "Wyszukiwarka Polish Music Sources zwróciła nieprawidłową odpowiedź."
+        )
+
+    return data
+
+
+def _matches_source_metadata(candidate, metadata):
+    candidate_rism_id = _normalize_reference(candidate.get("rism_id"))
+    expected_rism_id = _normalize_reference(metadata.rism_id)
+
+    if expected_rism_id and candidate_rism_id == expected_rism_id:
+        return True
+
+    expected_siglum = _normalize_reference(metadata.siglum)
+    expected_shelfmark = _normalize_reference(metadata.shelfmark)
+
+    if not expected_siglum or not expected_shelfmark:
+        return False
+
+    return (
+        _normalize_reference(candidate.get("library_siglum")) == expected_siglum
+        and _normalize_reference(candidate.get("shelfmark")) == expected_shelfmark
+    )
+
+
+def search_manuscripts(
+    session,
+    metadata,
+):
+    keywords = []
+
+    for value in (
+        metadata.rism_id,
+        metadata.shelfmark,
+    ):
+        value = str(value or "").strip()
+
+        if value and value not in keywords:
+            keywords.append(value)
+
+    matches = {}
+
+    for keyword in keywords:
+        for candidate in _search_api(
+            session,
+            keyword,
+        ):
+            if candidate.get("type") != "manuscripts":
+                continue
+
+            if not _matches_source_metadata(
+                candidate,
+                metadata,
+            ):
+                continue
+
+            manuscript_id = str(candidate.get("id_object") or "").strip()
+
+            if not manuscript_id:
+                continue
+
+            title = (
+                candidate.get("standardized_title")
+                or candidate.get("title")
+                or candidate.get("title_on_source")
+                or "bez tytułu"
+            )
+
+            matches[manuscript_id] = SearchResult(
+                manuscript_id=manuscript_id,
+                title=str(title).strip(),
+                siglum=str(candidate.get("library_siglum") or "").strip(),
+                shelfmark=str(candidate.get("shelfmark") or "").strip(),
+                rism_id=str(candidate.get("rism_id") or "").strip(),
+                url=MANUSCRIPT_PAGE_URL.format(
+                    manuscript_id=manuscript_id,
+                ),
+            )
+
+        if matches:
+            break
+
+    return tuple(matches.values())
 
 
 def download_and_extract(

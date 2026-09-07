@@ -13,6 +13,7 @@ from core.destinations import (
 from core.filesystem import format_file_size
 from core.scan_manifest import validate_scan_manifest, write_scan_manifest
 from core.scans import (
+    extract_scan_source_metadata,
     find_scan_provider,
     get_part_number,
     get_scan_group_key,
@@ -37,6 +38,7 @@ class ScanIssue:
     transcription_names: tuple[str, ...]
     source_url: str
     reason: str
+    source_metadata: object | None = None
 
 
 @dataclass(frozen=True)
@@ -164,9 +166,9 @@ def plan_scans(
                         ),
                         source_url=source["url"],
                         reason=reason,
+                        source_metadata=(extract_scan_source_metadata(primary_file)),
                     )
                 )
-
             continue
         try:
             download_info = provider.get_download_info(

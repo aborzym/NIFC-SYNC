@@ -3,8 +3,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
+from core.scans import ScanSourceMetadata
 from providers.polish_music_sources import (
+    SearchResult,
     download_and_extract,
+    search_manuscripts,
 )
 
 
@@ -53,6 +56,71 @@ class DownloadAndExtractTest(unittest.TestCase):
             )
             self.assertFalse((destination_folder / "skany").exists())
             self.assertFalse((destination_folder / "1234_Missa.problem.txt").exists())
+
+
+class SearchManuscriptsTest(unittest.TestCase):
+    def test_falls_back_to_exact_siglum_and_shelfmark(
+        self,
+    ):
+        rism_response = Mock()
+        rism_response.json.return_value = []
+
+        shelfmark_response = Mock()
+        shelfmark_response.json.return_value = [
+            {
+                "id_object": "5823",
+                "type": "manuscripts",
+                "library_siglum": "PL-Kk",
+                "shelfmark": "Kk.I.195",
+                "rism_id": "1001151874",
+                "standardized_title": "2 Hymns",
+            },
+            {
+                "id_object": "5828",
+                "type": "manuscripts",
+                "library_siglum": "PL-Kk",
+                "shelfmark": "Kk.I.2",
+                "rism_id": "300258016",
+                "standardized_title": "55 Sacred songs",
+            },
+        ]
+
+        session = Mock()
+        session.post.side_effect = (
+            rism_response,
+            shelfmark_response,
+        )
+        metadata = ScanSourceMetadata(
+            rism_id="300258019",
+            siglum="PL-Kk",
+            shelfmark="Kk.I.2",
+            composer="Terzago, Bernardino",
+            title="O beatum pontificem",
+        )
+
+        results = search_manuscripts(
+            session,
+            metadata,
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0],
+            SearchResult(
+                manuscript_id="5828",
+                title="55 Sacred songs",
+                siglum="PL-Kk",
+                shelfmark="Kk.I.2",
+                rism_id="300258016",
+                url=(
+                    "https://polish.musicsources.pl/pl/"
+                    "lokalizacje/galeria/rekopisy/5828/1"
+                ),
+            ),
+        )
+        self.assertEqual(session.post.call_count, 2)
+        rism_response.raise_for_status.assert_called_once_with()
+        shelfmark_response.raise_for_status.assert_called_once_with()
 
 
 if __name__ == "__main__":

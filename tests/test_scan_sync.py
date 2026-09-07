@@ -1,3 +1,4 @@
+import base64
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -527,11 +528,25 @@ class DownloadScanPlansTest(unittest.TestCase):
         source_url = "http://repozytorium.nifc.pl/skany/pl-wtm-nut--r2017"
         scan_issues = []
 
+        krn_content = (
+            "!!!COM: Śmietański, Emil Władysław\n"
+            "!!!OTL: Na Wawelu\n"
+            "!!!SMS-siglum: PL-Wtm\n"
+            "!!!SMS-shelfmark: R 2017\n"
+            "!!!NIFC-rismSourceID: 1001112891\n"
+            f"!!!URL-scan: {source_url}\n"
+            "**kern\n"
+            "*-\n"
+        )
+
         plans = plan_scans(
             selected_workflow={
                 "files": [
                     {
                         "name": filename,
+                        "content": base64.b64encode(krn_content.encode("utf-8")).decode(
+                            "ascii"
+                        ),
                     },
                 ],
             },
@@ -571,6 +586,27 @@ class DownloadScanPlansTest(unittest.TestCase):
         self.assertIn(
             "Brak automatycznej obsługi",
             scan_issues[0].reason,
+        )
+
+        self.assertEqual(
+            scan_issues[0].source_metadata.rism_id,
+            "1001112891",
+        )
+        self.assertEqual(
+            scan_issues[0].source_metadata.siglum,
+            "PL-Wtm",
+        )
+        self.assertEqual(
+            scan_issues[0].source_metadata.shelfmark,
+            "R 2017",
+        )
+        self.assertEqual(
+            scan_issues[0].source_metadata.composer,
+            "Śmietański, Emil Władysław",
+        )
+        self.assertEqual(
+            scan_issues[0].source_metadata.title,
+            "Na Wawelu",
         )
 
 
