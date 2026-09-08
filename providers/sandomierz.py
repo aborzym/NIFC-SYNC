@@ -12,9 +12,7 @@ import requests
 
 DOMAIN = "bc.bdsandomierz.pl"
 
-EDITION_PATTERN = re.compile(
-    r"/edition/(\d+)(?:/|$)"
-)
+EDITION_PATTERN = re.compile(r"/edition/(\d+)(?:/|$)")
 
 FILENAME_PATTERN = re.compile(
     r"filename\*=UTF-8''([^;]+)",
@@ -41,18 +39,11 @@ def build_download_url(scan_url: str) -> str:
     match = EDITION_PATTERN.search(parsed.path)
 
     if not match:
-        raise ValueError(
-            "Nie znaleziono identyfikatora edycji "
-            f"w URL-scan: {scan_url}"
-        )
+        raise ValueError(f"Nie znaleziono identyfikatora edycji w URL-scan: {scan_url}")
 
     edition_id = match.group(1)
 
-    return (
-        f"https://{DOMAIN}"
-        f"/Content/{edition_id}/download"
-        "?format_id=1"
-    )
+    return f"https://{DOMAIN}/Content/{edition_id}/download?format_id=1"
 
 
 def get_download_info(
@@ -68,31 +59,19 @@ def get_download_info(
     ) as response:
         response.raise_for_status()
 
-        content_length = response.headers.get(
-            "Content-Length"
-        )
+        content_length = response.headers.get("Content-Length")
         content_disposition = response.headers.get(
             "Content-Disposition",
             "",
         )
-        content_type = response.headers.get(
-            "Content-Type"
-        )
+        content_type = response.headers.get("Content-Type")
 
-    size = (
-        int(content_length)
-        if content_length
-        else None
-    )
+    size = int(content_length) if content_length else None
 
-    filename_match = FILENAME_PATTERN.search(
-        content_disposition
-    )
+    filename_match = FILENAME_PATTERN.search(content_disposition)
 
     if filename_match:
-        filename = unquote(
-            filename_match.group(1)
-        )
+        filename = unquote(filename_match.group(1))
     else:
         filename = "sandomierz_DjVu.zip"
 
@@ -111,25 +90,16 @@ def validate_archive(
     destination = destination.resolve()
 
     for member in archive.infolist():
-        member_path = (
-            destination / member.filename
-        ).resolve()
+        member_path = (destination / member.filename).resolve()
 
-        if (
-            member_path != destination
-            and destination not in member_path.parents
-        ):
-            raise ValueError(
-                "Niebezpieczna ścieżka "
-                f"w archiwum: {member.filename}"
-            )
+        if member_path != destination and destination not in member_path.parents:
+            raise ValueError(f"Niebezpieczna ścieżka w archiwum: {member.filename}")
 
         mode = member.external_attr >> 16
 
         if stat.S_ISLNK(mode):
             raise ValueError(
-                "Archiwum zawiera dowiązanie "
-                f"symboliczne: {member.filename}"
+                f"Archiwum zawiera dowiązanie symboliczne: {member.filename}"
             )
 
 
@@ -137,23 +107,13 @@ def validate_extracted_djvu(staging_folder: Path) -> list[Path]:
     djvu_files = list(staging_folder.rglob("*.djvu"))
 
     if not djvu_files:
-        raise ValueError(
-            "Archiwum nie zawiera plików DjVu."
-        )
+        raise ValueError("Archiwum nie zawiera plików DjVu.")
 
-    empty_files = [
-        path
-        for path in djvu_files
-        if path.stat().st_size == 0
-    ]
+    empty_files = [path for path in djvu_files if path.stat().st_size == 0]
 
     if empty_files:
-        names = ", ".join(
-            path.name for path in empty_files
-        )
-        raise ValueError(
-            f"Archiwum zawiera puste pliki DjVu: {names}"
-        )
+        names = ", ".join(path.name for path in empty_files)
+        raise ValueError(f"Archiwum zawiera puste pliki DjVu: {names}")
 
     return djvu_files
 
@@ -162,24 +122,16 @@ def download_and_extract(
     session: requests.Session,
     info: DownloadInfo,
     destination_folder: Path,
-    progress_callback: (
-        Callable[[int, int | None], None] | None
-    ) = None,
+    progress_callback: (Callable[[int, int | None], None] | None) = None,
+    output_folder_name="skany",
 ) -> Path:
-    scans_folder = destination_folder / "skany"
+    scans_folder = destination_folder / output_folder_name
 
     if scans_folder.exists():
-        raise FileExistsError(
-            f"Folder już istnieje: {scans_folder}"
-        )
+        raise FileExistsError(f"Folder już istnieje: {scans_folder}")
 
-    with tempfile.TemporaryDirectory(
-        prefix="nifc_sandomierz_"
-    ) as temporary_directory:
-        archive_path = (
-            Path(temporary_directory)
-            / info.filename
-        )
+    with tempfile.TemporaryDirectory(prefix="nifc_sandomierz_") as temporary_directory:
+        archive_path = Path(temporary_directory) / info.filename
 
         with session.get(
             info.url,
@@ -188,20 +140,12 @@ def download_and_extract(
         ) as response:
             response.raise_for_status()
 
-            content_length = response.headers.get(
-                "Content-Length"
-            )
-            total_size = (
-                int(content_length)
-                if content_length
-                else info.size
-            )
+            content_length = response.headers.get("Content-Length")
+            total_size = int(content_length) if content_length else info.size
             downloaded_size = 0
 
             with archive_path.open("wb") as output:
-                for chunk in response.iter_content(
-                    chunk_size=64 * 1024
-                ):
+                for chunk in response.iter_content(chunk_size=64 * 1024):
                     if not chunk:
                         continue
 
@@ -222,32 +166,21 @@ def download_and_extract(
         )
 
         try:
-            with zipfile.ZipFile(
-                archive_path
-            ) as archive:
+            with zipfile.ZipFile(archive_path) as archive:
                 bad_file = archive.testzip()
 
                 if bad_file:
-                    raise zipfile.BadZipFile(
-                        "Uszkodzony plik "
-                        f"w archiwum: {bad_file}"
-                    )
+                    raise zipfile.BadZipFile(f"Uszkodzony plik w archiwum: {bad_file}")
 
                 validate_archive(
                     archive,
                     staging_folder,
                 )
-                archive.extractall(
-                    staging_folder
-                )
+                archive.extractall(staging_folder)
 
-            validate_extracted_djvu(
-                staging_folder
-            )
+            validate_extracted_djvu(staging_folder)
 
-            staging_folder.rename(
-                scans_folder
-            )
+            staging_folder.rename(scans_folder)
 
         except Exception:
             shutil.rmtree(

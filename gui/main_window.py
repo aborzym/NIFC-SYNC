@@ -1,33 +1,62 @@
+from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QThread, QTimer, Qt
+from PySide6.QtCore import QSettings, Qt, QThread, QTimer
 from PySide6.QtGui import QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
+    QCheckBox,
+    QComboBox,
     QDialog,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QProgressBar,
+    QPushButton,
     QRadioButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from core.configuration import ConfigurationStore
+from core.credentials import (
+    CredentialStore,
+    CredentialStoreError,
+)
+from core.destinations import (
+    scan_package_folder_name,
+)
+from core.network import (
+    find_mounted_smb_path,
+    format_smb_location,
+)
+from core.scan_manifest import (
+    validate_scan_manifest,
+)
+from core.scan_sync import ScanDownloadRequest
+from gui.first_run_dialog import FirstRunDialog
+from gui.network_dialog import NetworkBrowserDialog
 from gui.scan_dialog import ScanSelectionDialog
-from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
+from gui.workers import (
+    CatalogLoader,
+    PolishMusicSourcesLookupWorker,
+    ScanDownloadWorker,
+    SyncWorker,
+)
+from providers import polish_music_sources
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("NIFC-SYNC 3.0")
+        self.configuration_store = ConfigurationStore()
+        self.credential_store = CredentialStore()
+        self.setWindowTitle("NIFC-SYNC 4.0")
         self.setMinimumSize(760, 560)
         self.workflows = {}
         self.catalog_thread = None
@@ -36,6 +65,8 @@ class MainWindow(QMainWindow):
         self.sync_worker = None
         self.scan_thread = None
         self.scan_worker = None
+        self.lookup_thread = None
+        self.lookup_worker = None
         self.pending_summary = None
         self.pending_scan_plans = ()
         self.activity_frame = 0
@@ -53,9 +84,7 @@ class MainWindow(QMainWindow):
         )
         self.activity_timer = QTimer(self)
         self.activity_timer.setInterval(110)
-        self.activity_timer.timeout.connect(
-            self._animate_activity_indicator
-        )
+        self.activity_timer.timeout.connect(self._animate_activity_indicator)
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -66,13 +95,19 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self._create_workflow_group())
         main_layout.addWidget(self._create_destination_group())
 
+        self.verify_scans_checkbox = QCheckBox("Dokładne sprawdzenie skanów")
+        self.verify_scans_checkbox.setToolTip(
+            "Sprawdza obecność i rozmiar każdego pliku "
+            "w pobranych pakietach skanów.\n"
+            "Na katalogu sieciowym może to potrwać znacznie dłużej."
+        )
+        main_layout.addWidget(self.verify_scans_checkbox)
+
         self.sync_button = QPushButton("Synchronizuj")
         self.sync_button.setObjectName("primaryButton")
         self.sync_button.setEnabled(False)
         self.sync_button.setMinimumHeight(42)
-        self.sync_button.clicked.connect(
-            self._start_synchronization
-        )
+        self.sync_button.clicked.connect(self._start_synchronization)
         main_layout.addWidget(self.sync_button)
 
         self.progress_bar = QProgressBar()
@@ -91,9 +126,7 @@ class MainWindow(QMainWindow):
         self.activity_indicator = QLabel("")
         self.activity_indicator.setObjectName("activityIndicator")
         self.activity_indicator.setFixedWidth(12)
-        self.activity_indicator.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
+        self.activity_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         log_header.addWidget(self.activity_indicator)
         self.progress_stage_label = QLabel("")
         self.progress_stage_label.setObjectName("progressStage")
@@ -103,27 +136,20 @@ class MainWindow(QMainWindow):
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setFont(
-            QFontDatabase.systemFont(
-                QFontDatabase.SystemFont.FixedFont
-            )
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         )
-        self.log_view.setPlaceholderText(
-            "Tutaj pojawi się przebieg synchronizacji."
-        )
+        self.log_view.setPlaceholderText("Tutaj pojawi się przebieg synchronizacji.")
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
-        self.copyright_label = QLabel(
-            "© 2026 Andrzej Borzym · NIFC-SYNC 3.0"
-        )
+        self.copyright_label = QLabel("© 2026 Andrzej Borzym · NIFC-SYNC 4.0")
         self.copyright_label.setObjectName("copyrightLabel")
         self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
 
         self._restore_settings()
-        self.destination_edit.textChanged.connect(
-            self._update_sync_button
-        )
+        self._populate_account_selector()
+        self.destination_edit.textChanged.connect(self._update_sync_button)
 
     def _create_header(self):
         layout = QHBoxLayout()
@@ -133,11 +159,7 @@ class MainWindow(QMainWindow):
         self.brand_mark.setObjectName("brandMark")
         self.brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.brand_mark.setFixedSize(42, 42)
-        icon_path = (
-            Path(__file__).resolve().parent.parent
-            / "assets"
-            / "sync.svg"
-        )
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "sync.svg"
         icon = QPixmap(str(icon_path)).scaled(
             32,
             32,
@@ -150,19 +172,20 @@ class MainWindow(QMainWindow):
         title_layout.setSpacing(2)
         title = QLabel("NIFC-SYNC")
         title.setObjectName("title")
-        subtitle = QLabel(
-            "Synchronizacja transkrypcji i skanów źródłowych"
-        )
+        subtitle = QLabel("Synchronizacja transkrypcji i skanów źródłowych")
         subtitle.setObjectName("subtitle")
         title_layout.addWidget(title)
         title_layout.addWidget(subtitle)
 
-        self.connection_label = QLabel("Łączenie z NIFC…")
+        self.connection_label = QLabel("Nie połączono")
         self.connection_label.setObjectName("connectionStatus")
         self.connection_label.setProperty("connected", False)
         self.connection_dot = QLabel()
         self.connection_dot.setObjectName("connectionDot")
-        self.connection_dot.setProperty("state", "connecting")
+        self.connection_dot.setProperty(
+            "state",
+            "disconnected",
+        )
         self.connection_dot.setFixedSize(8, 8)
         self.connection_button = QPushButton("Połącz")
         self.connection_button.setObjectName("smallButton")
@@ -171,14 +194,22 @@ class MainWindow(QMainWindow):
             "connectionAction",
             "connect",
         )
-        self.connection_button.setEnabled(False)
-        self.connection_button.clicked.connect(
-            self._toggle_connection
-        )
-
+        self.connection_button.setEnabled(True)
+        self.connection_button.clicked.connect(self._toggle_connection)
+        self.account_combo = QComboBox()
+        self.account_combo.setObjectName("accountSelector")
+        self.account_combo.setMinimumWidth(130)
+        self.account_combo.setMaximumWidth(180)
+        self.account_combo.currentIndexChanged.connect(self._change_active_account)
+        self.settings_button = QPushButton("Ustawienia")
+        self.settings_button.setObjectName("smallButton")
+        self.settings_button.setFixedWidth(100)
+        self.settings_button.clicked.connect(self._open_settings)
         layout.addWidget(self.brand_mark)
         layout.addLayout(title_layout)
         layout.addStretch()
+        layout.addWidget(self.account_combo)
+        layout.addWidget(self.settings_button)
         status_layout = QHBoxLayout()
         status_layout.setSpacing(6)
         status_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
@@ -206,36 +237,187 @@ class MainWindow(QMainWindow):
         return group
 
     def _create_destination_group(self):
-        group = QGroupBox("Katalog docelowy")
-        layout = QHBoxLayout(group)
-
-        self.destination_edit = QLineEdit(
-            str(Path.home() / "mac_transkrypcje")
-        )
-        self.destination_edit.setClearButtonEnabled(True)
-
+        self.destination_group = QGroupBox("Katalog docelowy")
+        layout = QHBoxLayout(self.destination_group)
+        self.destination_path = None
+        self.destination_edit = QLineEdit()
+        self.destination_edit.setPlaceholderText("Katalog docelowy")
+        self.destination_edit.setReadOnly(True)
         self.browse_button = QPushButton("Wybierz…")
         self.browse_button.clicked.connect(self._choose_destination)
 
         layout.addWidget(self.destination_edit, stretch=1)
         layout.addWidget(self.browse_button)
 
-        return group
+        return self.destination_group
+
+    def _destination_display_text(
+        self,
+        configuration,
+    ):
+        if configuration.destination is None:
+            return ""
+
+        if configuration.storage_kind == "mounted" and configuration.network_url:
+            return format_smb_location(configuration.network_url)
+
+        return str(configuration.destination)
 
     def _choose_destination(self):
+        configuration = self.configuration_store.load()
+        dialog_title = (
+            "Wybierz folder nadrzędny"
+            if configuration.naming_profile
+            in (
+                "marta-lawrence",
+                "andrzej-kubiczek",
+            )
+            else "Wybierz katalog docelowy"
+        )
+
+        starting_directory = (
+            str(self.destination_path) if self.destination_path is not None else ""
+        )
         selected_directory = QFileDialog.getExistingDirectory(
             self,
-            "Wybierz katalog docelowy",
-            self.destination_edit.text(),
+            dialog_title,
+            starting_directory,
         )
 
         if selected_directory:
-            self.destination_edit.setText(selected_directory)
+            self.destination_path = Path(selected_directory)
+            updated_configuration = replace(
+                configuration,
+                destination=self.destination_path,
+            )
+            self.destination_edit.setText(
+                self._destination_display_text(updated_configuration)
+            )
+
+    def _open_settings(self):
+        if any(
+            thread is not None
+            for thread in (
+                self.catalog_thread,
+                self.sync_thread,
+                self.scan_thread,
+            )
+        ):
+            QMessageBox.information(
+                self,
+                "Operacja w toku",
+                "Poczekaj na zakończenie bieżącej operacji.",
+            )
+            return
+
+        configuration = self.configuration_store.load()
+
+        try:
+            credentials = self.credential_store.load(configuration.nifc_username)
+        except CredentialStoreError as error:
+            QMessageBox.warning(
+                self,
+                "Nie można odczytać danych logowania",
+                str(error),
+            )
+            return
+
+        dialog = FirstRunDialog(
+            configuration_store=self.configuration_store,
+            credential_store=self.credential_store,
+            suggested_credentials=credentials,
+            initial_setup=False,
+            parent=self,
+        )
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        configuration = dialog.completed_configuration
+        self._populate_account_selector()
+        self._apply_configuration(configuration)
+
+        if self.workflows:
+            self._disconnect_catalog()
+            self.load_catalog()
 
     def show_ready_message(self):
         self.log_view.append("Interfejs uruchomiony.")
 
+    def _restore_network_share(
+        self,
+        configuration,
+    ):
+        if configuration.storage_kind != "mounted" or (
+            configuration.destination is not None and configuration.destination.is_dir()
+        ):
+            return configuration
+
+        question = QMessageBox(self)
+        question.setIcon(QMessageBox.Icon.Question)
+        question.setWindowTitle("Udział sieciowy nie jest zamontowany")
+        question.setText(
+            "Katalog sieciowy tego konta nie jest "
+            "obecnie dostępny.\n\n"
+            "Czy zamontować udział teraz?"
+        )
+        mount_button = question.addButton(
+            "Zamontuj udział",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        question.addButton(
+            "Anuluj",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        question.setDefaultButton(mount_button)
+        question.exec()
+
+        if question.clickedButton() is not mount_button:
+            return None
+
+        network_dialog = NetworkBrowserDialog(self)
+
+        if network_dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        share = network_dialog.selected_share
+
+        if share is None:
+            return None
+
+        destination = find_mounted_smb_path(share.uri)
+
+        if destination is None:
+            QMessageBox.warning(
+                self,
+                "Nie znaleziono zamontowanego udziału",
+                (
+                    "Udział został zamontowany, ale "
+                    "program nie odnalazł jego "
+                    "lokalnego katalogu."
+                ),
+            )
+            return None
+
+        configuration = replace(
+            configuration,
+            destination=destination,
+            network_url=share.uri,
+        )
+        self.configuration_store.save(configuration)
+        self._apply_configuration(configuration)
+
+        return configuration
+
     def load_catalog(self):
+        configuration = self.configuration_store.load()
+        configuration = self._restore_network_share(configuration)
+
+        if configuration is None:
+            return
+
+        self.statusBar().clearMessage()
+        self.sync_button.setEnabled(False)
         self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
         self.connection_button.setText("Łączenie…")
@@ -244,48 +426,41 @@ class MainWindow(QMainWindow):
         self.connection_label.setText("Łączenie z NIFC…")
         self.connection_label.setProperty("connected", False)
         self._set_connection_dot_state("connecting")
-        self.connection_label.style().unpolish(
-            self.connection_label
-        )
-        self.connection_label.style().polish(
-            self.connection_label
-        )
+        self.connection_label.style().unpolish(self.connection_label)
+        self.connection_label.style().polish(self.connection_label)
         self._start_activity_indicator()
 
+        try:
+            credentials = self.credential_store.load(configuration.nifc_username)
+        except CredentialStoreError as error:
+            self._catalog_failed(str(error))
+            self.connection_button.setEnabled(True)
+            return
+
+        if credentials is None:
+            self._catalog_failed(
+                "Nie znaleziono danych logowania w systemowym magazynie haseł."
+            )
+            self.connection_button.setEnabled(True)
+            return
+
         self.catalog_thread = QThread(self)
-        self.catalog_worker = CatalogLoader()
+        self.catalog_worker = CatalogLoader(credentials)
         self.catalog_worker.moveToThread(self.catalog_thread)
 
-        self.catalog_thread.started.connect(
-            self.catalog_worker.run
-        )
+        self.catalog_thread.started.connect(self.catalog_worker.run)
         self.catalog_worker.log.connect(self.log_view.append)
-        self.catalog_worker.loaded.connect(
-            self._catalog_loaded
-        )
-        self.catalog_worker.failed.connect(
-            self._catalog_failed
-        )
-        self.catalog_worker.finished.connect(
-            self.catalog_thread.quit
-        )
-        self.catalog_worker.finished.connect(
-            self.catalog_worker.deleteLater
-        )
-        self.catalog_thread.finished.connect(
-            self.catalog_thread.deleteLater
-        )
-        self.catalog_thread.finished.connect(
-            self._catalog_thread_finished
-        )
+        self.catalog_worker.loaded.connect(self._catalog_loaded)
+        self.catalog_worker.failed.connect(self._catalog_failed)
+        self.catalog_worker.finished.connect(self.catalog_thread.quit)
+        self.catalog_worker.finished.connect(self.catalog_worker.deleteLater)
+        self.catalog_thread.finished.connect(self.catalog_thread.deleteLater)
+        self.catalog_thread.finished.connect(self._catalog_thread_finished)
 
         self.catalog_thread.start()
 
     def _catalog_loaded(self, workflows, user_name):
-        self.workflows = {
-            workflow["name"]: workflow
-            for workflow in workflows
-        }
+        self.workflows = {workflow["name"]: workflow for workflow in workflows}
 
         radio_buttons = {
             "KRN-diplomatic": self.diplomatic_radio,
@@ -301,23 +476,15 @@ class MainWindow(QMainWindow):
         for workflow_name, radio_button in radio_buttons.items():
             workflow = self.workflows.get(workflow_name)
             file_count = len(workflow["files"]) if workflow else 0
-            radio_button.setText(
-                f"{labels[workflow_name]} ({file_count})"
-            )
+            radio_button.setText(f"{labels[workflow_name]} ({file_count})")
             radio_button.setEnabled(workflow is not None)
 
         self.statusBar().showMessage("Gotowy")
-        self.connection_label.setText(
-            f"Zalogowano jako: {user_name}"
-        )
+        self.connection_label.setText(f"Zalogowano jako: {user_name}")
         self.connection_label.setProperty("connected", True)
         self._set_connection_dot_state("connected")
-        self.connection_label.style().unpolish(
-            self.connection_label
-        )
-        self.connection_label.style().polish(
-            self.connection_label
-        )
+        self.connection_label.style().unpolish(self.connection_label)
+        self.connection_label.style().polish(self.connection_label)
         self._update_sync_button()
         self._stop_activity_indicator()
         self.connection_button.setText("Rozłącz")
@@ -352,12 +519,8 @@ class MainWindow(QMainWindow):
         self.connection_label.setText("Rozłączono")
         self.connection_label.setProperty("connected", False)
         self._set_connection_dot_state("disconnected")
-        self.connection_label.style().unpolish(
-            self.connection_label
-        )
-        self.connection_label.style().polish(
-            self.connection_label
-        )
+        self.connection_label.style().unpolish(self.connection_label)
+        self.connection_label.style().polish(self.connection_label)
         self.connection_button.setText("Połącz")
         self._set_connection_button_action("connect")
         self.log_view.append("Rozłączono z NIFC.")
@@ -370,21 +533,13 @@ class MainWindow(QMainWindow):
             "connectionAction",
             action,
         )
-        self.connection_button.style().unpolish(
-            self.connection_button
-        )
-        self.connection_button.style().polish(
-            self.connection_button
-        )
+        self.connection_button.style().unpolish(self.connection_button)
+        self.connection_button.style().polish(self.connection_button)
 
     def _set_connection_dot_state(self, state):
         self.connection_dot.setProperty("state", state)
-        self.connection_dot.style().unpolish(
-            self.connection_dot
-        )
-        self.connection_dot.style().polish(
-            self.connection_dot
-        )
+        self.connection_dot.style().unpolish(self.connection_dot)
+        self.connection_dot.style().polish(self.connection_dot)
 
     def _set_workflow_counts_empty(self):
         buttons = (
@@ -398,13 +553,9 @@ class MainWindow(QMainWindow):
 
     def _update_sync_button(self):
         has_catalog = bool(self.workflows)
-        has_destination = bool(
-            self.destination_edit.text().strip()
-        )
+        has_destination = self.destination_path is not None
         self.sync_button.setEnabled(
-            has_catalog
-            and has_destination
-            and self.sync_thread is None
+            has_catalog and has_destination and self.sync_thread is None
         )
 
     def _selected_workflow(self):
@@ -428,15 +579,17 @@ class MainWindow(QMainWindow):
         selected_workflow = self._selected_workflow()
 
         if selected_workflow is None:
-            self._catalog_failed(
-                "Nie wybrano rodzaju transkrypcji."
-            )
+            self._catalog_failed("Nie wybrano rodzaju transkrypcji.")
             return
 
-        self.log_view.clear()
-        self.log_view.append(
-            f"Synchronizacja: {selected_workflow['name']}"
+        configuration = replace(
+            self.configuration_store.load(),
+            destination=self.destination_path,
+            workflow=self._selected_workflow_name(),
         )
+
+        self.log_view.clear()
+        self.log_view.append(f"Synchronizacja: {selected_workflow['name']}")
         self.statusBar().showMessage("Synchronizacja…")
         self.progress_stage_label.setText("Przygotowanie… 0%")
         self.progress_bar.setRange(0, 100)
@@ -448,31 +601,20 @@ class MainWindow(QMainWindow):
         self.sync_worker = SyncWorker(
             selected_workflow=selected_workflow,
             available_workflows=list(self.workflows.values()),
-            destination=self.destination_edit.text().strip(),
+            configuration=configuration,
+            verify_scan_sizes=(self.verify_scans_checkbox.isChecked()),
         )
         self.sync_worker.moveToThread(self.sync_thread)
 
         self.sync_thread.started.connect(self.sync_worker.run)
         self.sync_worker.log.connect(self.log_view.append)
-        self.sync_worker.progress.connect(
-            self._update_progress
-        )
-        self.sync_worker.completed.connect(
-            self._synchronization_completed
-        )
-        self.sync_worker.failed.connect(
-            self._synchronization_failed
-        )
+        self.sync_worker.progress.connect(self._update_progress)
+        self.sync_worker.completed.connect(self._synchronization_completed)
+        self.sync_worker.failed.connect(self._synchronization_failed)
         self.sync_worker.finished.connect(self.sync_thread.quit)
-        self.sync_worker.finished.connect(
-            self.sync_worker.deleteLater
-        )
-        self.sync_thread.finished.connect(
-            self.sync_thread.deleteLater
-        )
-        self.sync_thread.finished.connect(
-            self._sync_thread_finished
-        )
+        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
+        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
+        self.sync_thread.finished.connect(self._sync_thread_finished)
 
         self.sync_thread.start()
 
@@ -480,9 +622,7 @@ class MainWindow(QMainWindow):
         if percentage >= 0:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(percentage)
-            self.progress_stage_label.setText(
-                f"Synchronizacja… {percentage}%"
-            )
+            self.progress_stage_label.setText(f"Synchronizacja… {percentage}%")
         else:
             self.progress_bar.setRange(0, 0)
             self.progress_stage_label.setText("Pobieranie skanów…")
@@ -492,24 +632,32 @@ class MainWindow(QMainWindow):
         self.pending_scan_plans = scan_plans
 
     def _finish_synchronization(self, summary):
+        scan_issues = summary.get(
+            "scan_issues",
+            (),
+        )
         self._stop_activity_indicator()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.log_view.append("\n────────────────────────────────")
         self.log_view.append("GOTOWE")
-        self.log_view.append(
-            f"Utworzono folderów: {summary['created']}"
-        )
-        self.log_view.append(
-            f"Pobrano transkrypcji: {summary['downloaded']}"
-        )
-        self.log_view.append(
-            f"Pobrano pakietów skanów: {summary['scan_packages']}"
-        )
-        self.log_view.append(
-            f"Pominięto transkrypcji: {summary['skipped']}"
-        )
+        self.log_view.append(f"Utworzono folderów: {summary['created']}")
+        self.log_view.append(f"Pobrano transkrypcji: {summary['downloaded']}")
+        self.log_view.append(f"Pobrano pakietów skanów: {summary['scan_packages']}")
+        self.log_view.append(f"Pominięto transkrypcji: {summary['skipped']}")
+        self.log_view.append(f"Źródła wymagające ręcznego pobrania: {len(scan_issues)}")
         self.log_view.append("────────────────────────────────")
+        if scan_issues:
+            self.log_view.append("\nSKANY WYMAGAJĄCE RĘCZNEGO POBRANIA:")
+
+            for issue in scan_issues:
+                self.log_view.append(f"\nGRUPA: {issue.group_key}")
+                self.log_view.append(f"POWÓD: {issue.reason}")
+
+                for transcription_name in issue.transcription_names:
+                    self.log_view.append(f"UTWÓR: {transcription_name}")
+
+                self.log_view.append(f"URL-scan: {issue.source_url}")
         self.statusBar().showMessage("Gotowe")
         self.progress_stage_label.clear()
 
@@ -529,13 +677,209 @@ class MainWindow(QMainWindow):
             self._update_sync_button()
             return
 
-        QTimer.singleShot(0, self._offer_scan_downloads)
+        QTimer.singleShot(
+            0,
+            self._offer_polish_music_sources_lookup,
+        )
+
+    def _offer_polish_music_sources_lookup(self):
+        summary = self.pending_summary
+
+        if summary is None:
+            return
+
+        searchable_issues = tuple(
+            issue
+            for issue in summary.get(
+                "scan_issues",
+                (),
+            )
+            if (
+                issue.source_metadata is not None
+                and (
+                    issue.source_metadata.rism_id
+                    or (
+                        issue.source_metadata.siglum and issue.source_metadata.shelfmark
+                    )
+                )
+            )
+        )
+
+        if not searchable_issues:
+            self._offer_scan_downloads()
+            return
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setWindowTitle("Wyszukiwanie skanów")
+        dialog.setText(
+            "Nie znaleziono skanów pod zapisanym "
+            f"adresem dla {len(searchable_issues)} "
+            "źródeł.\n\n"
+            "Czy wyszukać je w Polish Music Sources?"
+        )
+
+        search_button = dialog.addButton(
+            "Wyszukaj w Polish Music Sources",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.addButton(
+            "Pomiń",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        dialog.setDefaultButton(search_button)
+        dialog.exec()
+
+        if dialog.clickedButton() is not search_button:
+            self._offer_scan_downloads()
+            return
+
+        self._start_polish_music_sources_lookup(searchable_issues)
+
+    def _start_polish_music_sources_lookup(
+        self,
+        scan_issues,
+    ):
+        self.statusBar().showMessage("Wyszukiwanie skanów…")
+        self.progress_stage_label.setText("Wyszukiwanie w Polish Music Sources…")
+        self.pending_lookup_results = None
+
+        self.lookup_thread = QThread(self)
+        self.lookup_worker = PolishMusicSourcesLookupWorker(scan_issues)
+        self.lookup_worker.moveToThread(self.lookup_thread)
+
+        self.lookup_thread.started.connect(self.lookup_worker.run)
+        self.lookup_worker.log.connect(self.log_view.append)
+        self.lookup_worker.completed.connect(
+            self._polish_music_sources_lookup_completed
+        )
+        self.lookup_worker.failed.connect(self._polish_music_sources_lookup_failed)
+        self.lookup_worker.finished.connect(self.lookup_thread.quit)
+        self.lookup_worker.finished.connect(self.lookup_worker.deleteLater)
+        self.lookup_thread.finished.connect(self.lookup_thread.deleteLater)
+        self.lookup_thread.finished.connect(self._polish_music_sources_lookup_finished)
+        self.lookup_thread.start()
+
+    def _polish_music_sources_lookup_completed(
+        self,
+        lookup_results,
+    ):
+        self.pending_lookup_results = tuple(lookup_results)
+
+    def _polish_music_sources_lookup_failed(
+        self,
+        message,
+    ):
+        self.pending_lookup_results = ()
+        self.log_view.append(f"\nNIE UDAŁO SIĘ WYSZUKAĆ SKANÓW: {message}")
+
+    def _polish_music_sources_lookup_finished(self):
+        self.lookup_thread = None
+        self.lookup_worker = None
+        lookup_results = self.pending_lookup_results or ()
+        self.pending_lookup_results = None
+        configuration = self.configuration_store.load()
+        found_plans = []
+        resolved_issues = []
+
+        for issue, results in lookup_results:
+            metadata = issue.source_metadata
+
+            if not results:
+                self.log_view.append("\nNIE ZNALEZIONO W POLISH MUSIC SOURCES:")
+                self.log_view.append(f"  ŹRÓDŁO: {issue.group_key}")
+                self.log_view.append(
+                    f"  SIGLUM I SYGNATURA: {metadata.siglum} {metadata.shelfmark}"
+                )
+                continue
+
+            if len(results) > 1:
+                self.log_view.append(
+                    "\nZNALEZIONO KILKA PASUJĄCYCH ŹRÓDEŁ — WYMAGANY WYBÓR RĘCZNY:"
+                )
+
+                for search_result, _download_info in results:
+                    self.log_view.append(
+                        "  "
+                        f"{search_result.title} — "
+                        f"{search_result.siglum} "
+                        f"{search_result.shelfmark}"
+                    )
+                    self.log_view.append(f"  {search_result.url}")
+
+                continue
+
+            search_result, download_info = results[0]
+
+            self.log_view.append("\nZNALEZIONO W POLISH MUSIC SOURCES:")
+            self.log_view.append(f"  TYTUŁ: {search_result.title}")
+            self.log_view.append(
+                "  SIGLUM I SYGNATURA: "
+                f"{search_result.siglum} "
+                f"{search_result.shelfmark}"
+            )
+            self.log_view.append(f"  LICZBA SKANÓW: {len(download_info.scans)}")
+            self.log_view.append(f"  ADRES: {search_result.url}")
+
+            if issue.destination_folder is None:
+                continue
+
+            if configuration.naming_profile in (
+                "marta-lawrence",
+                "andrzej-kubiczek",
+            ):
+                output_folder_name = scan_package_folder_name(download_info.filename)
+            else:
+                output_folder_name = "skany"
+
+            scans_folder = issue.destination_folder / output_folder_name
+            manifest_status = validate_scan_manifest(
+                scans_folder,
+                verify_sizes=False,
+            )
+
+            if scans_folder.exists() and manifest_status is not False:
+                self.log_view.append(f"  SKANY JUŻ ISTNIEJĄ: {scans_folder}")
+                resolved_issues.append(issue)
+                continue
+
+            found_plans.append(
+                ScanDownloadRequest(
+                    group_key=issue.group_key,
+                    transcription_name=(issue.transcription_names[0]),
+                    source_url=search_result.url,
+                    destination_folder=(issue.destination_folder),
+                    download_info=download_info,
+                    provider=polish_music_sources,
+                    is_incomplete=(scans_folder.exists() and manifest_status is False),
+                    output_folder_name=(output_folder_name),
+                )
+            )
+            resolved_issues.append(issue)
+
+        self.pending_scan_plans = tuple(self.pending_scan_plans) + tuple(found_plans)
+
+        if self.pending_summary is not None:
+            self.pending_summary["scan_issues"] = tuple(
+                issue
+                for issue in self.pending_summary.get(
+                    "scan_issues",
+                    (),
+                )
+                if issue not in resolved_issues
+            )
+
+        QTimer.singleShot(
+            0,
+            self._offer_scan_downloads,
+        )
 
     def _offer_scan_downloads(self):
         summary = self.pending_summary
         plans = self.pending_scan_plans
         self.pending_summary = None
         self.pending_scan_plans = ()
+        self.pending_lookup_results = None
 
         if not plans:
             self._finish_synchronization(summary)
@@ -565,25 +909,13 @@ class MainWindow(QMainWindow):
 
         self.scan_thread.started.connect(self.scan_worker.run)
         self.scan_worker.log.connect(self.log_view.append)
-        self.scan_worker.progress.connect(
-            self._update_scan_progress
-        )
-        self.scan_worker.completed.connect(
-            self._scan_download_completed
-        )
-        self.scan_worker.failed.connect(
-            self._synchronization_failed
-        )
+        self.scan_worker.progress.connect(self._update_scan_progress)
+        self.scan_worker.completed.connect(self._scan_download_completed)
+        self.scan_worker.failed.connect(self._synchronization_failed)
         self.scan_worker.finished.connect(self.scan_thread.quit)
-        self.scan_worker.finished.connect(
-            self.scan_worker.deleteLater
-        )
-        self.scan_thread.finished.connect(
-            self.scan_thread.deleteLater
-        )
-        self.scan_thread.finished.connect(
-            self._scan_thread_finished
-        )
+        self.scan_worker.finished.connect(self.scan_worker.deleteLater)
+        self.scan_thread.finished.connect(self.scan_thread.deleteLater)
+        self.scan_thread.finished.connect(self._scan_thread_finished)
         self.scan_thread.start()
 
     def _update_scan_progress(self, percentage, detail):
@@ -606,9 +938,7 @@ class MainWindow(QMainWindow):
     def _start_activity_indicator(self):
         self.activity_frame = 0
         self.activity_indicator.setText("●")
-        self.activity_indicator.setStyleSheet(
-            f"color: {self.activity_colors[0]};"
-        )
+        self.activity_indicator.setStyleSheet(f"color: {self.activity_colors[0]};")
         self.activity_timer.start()
 
     def _stop_activity_indicator(self):
@@ -616,9 +946,7 @@ class MainWindow(QMainWindow):
         self.activity_indicator.clear()
 
     def _animate_activity_indicator(self):
-        self.activity_frame = (
-            self.activity_frame + 1
-        ) % len(self.activity_colors)
+        self.activity_frame = (self.activity_frame + 1) % len(self.activity_colors)
         self.activity_indicator.setStyleSheet(
             f"color: {self.activity_colors[self.activity_frame]};"
         )
@@ -629,8 +957,182 @@ class MainWindow(QMainWindow):
         self.xml_radio.setEnabled(enabled)
         self.destination_edit.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
+        self.verify_scans_checkbox.setEnabled(enabled)
+        self.account_combo.setEnabled(enabled)
         self.connection_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
+
+    def _populate_account_selector(self):
+        active_account_id = self.configuration_store.active_account_id()
+        accounts = self.configuration_store.list_accounts()
+
+        self.account_combo.blockSignals(True)
+        self.account_combo.clear()
+
+        for account in accounts:
+            self.account_combo.addItem(
+                account.name,
+                account.account_id,
+            )
+
+        if accounts:
+            self.account_combo.insertSeparator(self.account_combo.count())
+
+        self.account_combo.addItem(
+            "Dodaj konto…",
+            "__add_account__",
+        )
+
+        if len(accounts) > 1:
+            self.account_combo.addItem(
+                "Usuń bieżące konto…",
+                "__delete_account__",
+            )
+
+        active_index = self.account_combo.findData(active_account_id)
+
+        if active_index >= 0:
+            self.account_combo.setCurrentIndex(active_index)
+
+        self.account_combo.blockSignals(False)
+
+    def _change_active_account(self, index):
+        account_id = self.account_combo.itemData(index)
+
+        if account_id == "__add_account__":
+            self._open_new_account()
+            return
+
+        if account_id == "__delete_account__":
+            self._delete_active_account()
+            return
+
+        if not account_id or account_id == self.configuration_store.active_account_id():
+            return
+
+        self._save_settings()
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        self.configuration_store.set_active_account(account_id)
+        configuration = self.configuration_store.load()
+        self._apply_configuration(configuration)
+        self.log_view.append(f"Wybrano konto: {self.account_combo.currentText()}.")
+
+    def _open_new_account(self):
+        self._save_settings()
+
+        dialog = FirstRunDialog(
+            configuration_store=self.configuration_store,
+            credential_store=self.credential_store,
+            initial_setup=False,
+            new_account=True,
+            parent=self,
+        )
+
+        if dialog.exec() != QDialog.Accepted:
+            self._populate_account_selector()
+            return
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        configuration = dialog.completed_configuration
+        self._populate_account_selector()
+        self._apply_configuration(configuration)
+        self.log_view.append(
+            f"Utworzono i wybrano konto: {self.account_combo.currentText()}."
+        )
+
+    def _delete_active_account(self):
+        accounts = self.configuration_store.list_accounts()
+        active_account_id = self.configuration_store.active_account_id()
+        active_account = next(
+            (
+                account
+                for account in accounts
+                if account.account_id == active_account_id
+            ),
+            None,
+        )
+
+        if active_account is None:
+            self._populate_account_selector()
+            return
+
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.NoIcon)
+        message_box.setWindowTitle("Usuń konto")
+        message_box.setText(
+            f"Czy usunąć konto „{active_account.name}” "
+            "wraz z jego ustawieniami?\n\n"
+            "Dane logowania również zostaną usunięte, "
+            "jeśli nie korzysta z nich inne konto."
+        )
+        message_box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        delete_button = message_box.button(QMessageBox.StandardButton.Yes)
+        cancel_button = message_box.button(QMessageBox.StandardButton.No)
+        delete_button.setText("Usuń")
+        cancel_button.setText("Anuluj")
+        message_box.setDefaultButton(QMessageBox.StandardButton.No)
+
+        if message_box.exec() != QMessageBox.StandardButton.Yes:
+            self._populate_account_selector()
+            return
+
+        deleted_username = self.configuration_store.load().nifc_username
+
+        if self.workflows:
+            self._disconnect_catalog()
+
+        self.configuration_store.delete_account(active_account_id)
+
+        if deleted_username and not self.configuration_store.has_account_for_username(
+            deleted_username
+        ):
+            try:
+                self.credential_store.delete(deleted_username)
+            except CredentialStoreError as error:
+                QMessageBox.warning(
+                    self,
+                    "Nie można usunąć danych logowania",
+                    str(error),
+                )
+
+        configuration = self.configuration_store.load()
+        self._populate_account_selector()
+        self._apply_configuration(configuration)
+        self.log_view.append(f"Usunięto konto: {active_account.name}.")
+
+    def _apply_configuration(self, configuration):
+
+        if configuration.naming_profile == "marta-lawrence":
+            self.destination_group.setTitle("Folder nadrzędny")
+            self.destination_edit.setPlaceholderText("Folder nadrzędny, np. Pulpit")
+        elif configuration.naming_profile == "andrzej-kubiczek":
+            self.destination_group.setTitle("Folder nadrzędny")
+            self.destination_edit.setPlaceholderText(
+                "Folder nadrzędny katalogów rocznych"
+            )
+        else:
+            self.destination_group.setTitle("Katalog docelowy")
+            self.destination_edit.setPlaceholderText("Katalog docelowy")
+
+        self.destination_path = configuration.destination
+        self.destination_edit.setText(self._destination_display_text(configuration))
+
+        radio_buttons = {
+            "KRN-diplomatic": self.diplomatic_radio,
+            "KRN-modern": self.modern_radio,
+            "XML": self.xml_radio,
+        }
+        radio_buttons.get(
+            configuration.workflow,
+            self.diplomatic_radio,
+        ).setChecked(True)
 
     def _restore_settings(self):
         settings = QSettings()
@@ -639,35 +1141,22 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
 
-        destination = settings.value("sync/destination")
-        if destination:
-            self.destination_edit.setText(destination)
-
-        workflow_name = settings.value(
-            "sync/workflow",
-            "KRN-diplomatic",
-        )
-        radio_buttons = {
-            "KRN-diplomatic": self.diplomatic_radio,
-            "KRN-modern": self.modern_radio,
-            "XML": self.xml_radio,
-        }
-        radio_buttons.get(
-            workflow_name,
-            self.diplomatic_radio,
-        ).setChecked(True)
+        configuration = self.configuration_store.load()
+        self._apply_configuration(configuration)
 
     def _save_settings(self):
         settings = QSettings()
-        settings.setValue("window/geometry", self.saveGeometry())
         settings.setValue(
-            "sync/destination",
-            self.destination_edit.text().strip(),
+            "window/geometry",
+            self.saveGeometry(),
         )
-        settings.setValue(
-            "sync/workflow",
-            self._selected_workflow_name(),
+
+        configuration = replace(
+            self.configuration_store.load(),
+            destination=self.destination_path,
+            workflow=self._selected_workflow_name(),
         )
+        self.configuration_store.save(configuration)
 
     def closeEvent(self, event):
         threads = (
@@ -675,10 +1164,7 @@ class MainWindow(QMainWindow):
             self.sync_thread,
             self.scan_thread,
         )
-        is_busy = any(
-            thread is not None and thread.isRunning()
-            for thread in threads
-        )
+        is_busy = any(thread is not None and thread.isRunning() for thread in threads)
 
         if is_busy:
             QMessageBox.warning(

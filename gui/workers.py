@@ -1,4 +1,3 @@
-from pathlib import Path
 import subprocess
 
 import requests
@@ -8,12 +7,20 @@ from core.catalog import (
     build_scan_indexes,
     get_available_workflows,
 )
-from core.client import NifcClient, load_credentials
 from core.cleanup import cleanup_scan_staging_folders
+from core.client import NifcClient
 from core.filesystem import format_file_size
 from core.inventory import build_storage_inventory
+from core.network import format_smb_location
 from core.scan_sync import download_scan_plans, plan_scans
+from core.scans import get_scan_group_key
 from core.sync import sync_transcriptions
+from providers.polish_music_sources import (
+    get_download_info as get_polish_music_sources_download_info,
+)
+from providers.polish_music_sources import (
+    search_manuscripts,
+)
 
 
 class CatalogLoader(QObject):
@@ -22,30 +29,31 @@ class CatalogLoader(QObject):
     failed = Signal(str)
     finished = Signal()
 
+    def __init__(self, credentials):
+        super().__init__()
+        self.credentials = credentials
+
     @Slot()
     def run(self):
         try:
             self.log.emit("Łączenie z NIFC…")
 
-            credentials = load_credentials(
-                Path.home() / ".nifccredentials"
-            )
             client = NifcClient()
 
             login_response = client.login(
-                credentials["login"],
-                credentials["password"],
+                self.credentials.username,
+                self.credentials.password,
             )
-
             if not login_response.ok:
                 raise RuntimeError(
-                    "Błąd logowania do NIFC "
-                    f"(HTTP {login_response.status_code})."
+                    f"Błąd logowania do NIFC (HTTP {login_response.status_code})."
                 )
 
             user = login_response.json()
-            user_name = user.get("name", credentials["login"])
-
+            user_name = user.get(
+                "name",
+                self.credentials.username,
+            )
             self.log.emit("Pobieranie danych…")
             files_response = client.get_files()
 
@@ -55,15 +63,10 @@ class CatalogLoader(QObject):
                     f"(HTTP {files_response.status_code})."
                 )
 
-            workflows = get_available_workflows(
-                files_response.json()
-            )
+            workflows = get_available_workflows(files_response.json())
 
             if not workflows:
-                raise RuntimeError(
-                    "NIFC nie zwrócił dostępnych rodzajów "
-                    "transkrypcji."
-                )
+                raise RuntimeError("NIFC nie zwrócił dostępnych rodzajów transkrypcji.")
 
             self.loaded.emit(workflows, user_name)
             self.log.emit("Pobrano dane z NIFC.")
@@ -91,12 +94,23 @@ class SyncWorker(QObject):
         self,
         selected_workflow,
         available_workflows,
-        destination,
+        configuration,
+        verify_scan_sizes=False,
     ):
         super().__init__()
         self.selected_workflow = selected_workflow
         self.available_workflows = available_workflows
-        self.destination = Path(destination)
+        self.configuration = configuration
+        self.destination = configuration.destination
+        self.verify_scan_sizes = verify_scan_sizes
+
+        if configuration.storage_kind == "mounted" and configuration.network_url:
+            self.destination_display = format_smb_location(
+                configuration.network_url,
+                destination=self.destination,
+            )
+        else:
+            self.destination_display = str(self.destination)
 
     @Slot()
     def run(self):
@@ -108,25 +122,34 @@ class SyncWorker(QObject):
 
             if not self.destination.is_dir():
                 raise RuntimeError(
-                    "Katalog docelowy nie jest dostępny: "
-                    f"{self.destination}"
+                    f"Katalog docelowy nie jest dostępny: {self.destination_display}"
                 )
 
-            self.log.emit(
-                f"Katalog docelowy: {self.destination}"
-            )
-
+            self.log.emit(f"Katalog docelowy: {self.destination_display}")
             self.log.emit("Analiza danych z NIFC…")
             self.progress.emit(10)
-            scan_urls_by_group, scan_sources_by_url = (
-                build_scan_indexes(self.available_workflows)
+            scan_urls_by_group, scan_sources_by_url = build_scan_indexes(
+                self.available_workflows
             )
+
+            selected_group_keys = {
+                get_scan_group_key(api_file["name"])
+                for api_file in self.selected_workflow["files"]
+            }
+            inventory_scan_urls_by_group = {
+                group_key: scan_urls_by_group.get(
+                    group_key,
+                    set(),
+                )
+                for group_key in selected_group_keys
+            }
 
             self.log.emit("Inwentaryzacja katalogu docelowego…")
             self.progress.emit(20)
             inventory = build_storage_inventory(
                 self.destination,
-                scan_urls_by_group,
+                inventory_scan_urls_by_group,
+                verify_scan_sizes=(self.verify_scan_sizes),
             )
             self.progress.emit(40)
 
@@ -137,19 +160,15 @@ class SyncWorker(QObject):
                 self.destination,
                 inventory.folder_names,
                 inventory.next_number,
+                configuration=self.configuration,
                 log=self.log.emit,
             )
             self.progress.emit(65)
 
-            self.log.emit(
-                "Sprzątanie pozostałości dla wybranego rodzaju "
-                "transkrypcji…"
-            )
+            self.log.emit("Sprzątanie pozostałości dla wybranego rodzaju transkrypcji…")
             cleanup_scan_staging_folders(
                 self.destination,
-                project_folders=set(
-                    transcription_result.target_folders.values()
-                ),
+                project_folders=set(transcription_result.target_folders.values()),
                 log=self.log.emit,
             )
             self.progress.emit(70)
@@ -157,6 +176,8 @@ class SyncWorker(QObject):
             self.log.emit("Kontrola skanów…")
             self.progress.emit(75)
             session = requests.Session()
+            scan_issues = []
+
             scan_plans = plan_scans(
                 self.selected_workflow,
                 scan_urls_by_group,
@@ -164,6 +185,8 @@ class SyncWorker(QObject):
                 inventory.existing_scans_by_url,
                 transcription_result.target_folders,
                 session,
+                configuration=self.configuration,
+                scan_issues=scan_issues,
                 log=self.log.emit,
             )
             self.progress.emit(80)
@@ -171,16 +194,14 @@ class SyncWorker(QObject):
             self.completed.emit(
                 {
                     "created": transcription_result.created_count,
-                    "downloaded": (
-                        transcription_result.downloaded_count
-                    ),
+                    "downloaded": transcription_result.downloaded_count,
                     "skipped": transcription_result.skipped_count,
                     "scan_packages": 0,
+                    "scan_issues": tuple(scan_issues),
                 },
                 scan_plans,
             )
-
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
@@ -198,8 +219,9 @@ class SyncWorker(QObject):
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(
                 "Katalog docelowy nie odpowiada. "
-                "Mac lub udział sieciowy może być uśpiony albo "
-                "niedostępny. Obudź Maca i spróbuj ponownie."
+                "Dysk lub udział sieciowy może być "
+                "niedostępny. Sprawdź połączenie "
+                "i spróbuj ponownie."
             ) from error
 
         if result.returncode != 0:
@@ -208,7 +230,6 @@ class SyncWorker(QObject):
             if detail:
                 message += f": {detail}"
             raise RuntimeError(message)
-
 
 
 class ScanDownloadWorker(QObject):
@@ -233,7 +254,7 @@ class ScanDownloadWorker(QObject):
                 log=self.log.emit,
             )
             self.completed.emit(result.downloaded_packages)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
@@ -244,15 +265,10 @@ class ScanDownloadWorker(QObject):
             package_fraction = min(downloaded / total, 1)
         else:
             package_fraction = 0
-        overall_fraction = (
-            package_index + package_fraction
-        ) / len(self.plans)
-        known_total = sum(
-            plan.download_info.size or 0 for plan in self.plans
-        )
+        overall_fraction = (package_index + package_fraction) / len(self.plans)
+        known_total = sum(plan.download_info.size or 0 for plan in self.plans)
         completed_size = sum(
-            plan.download_info.size or 0
-            for plan in self.plans[:package_index]
+            plan.download_info.size or 0 for plan in self.plans[:package_index]
         )
         downloaded_size = completed_size + downloaded
         if known_total:
@@ -266,3 +282,94 @@ class ScanDownloadWorker(QObject):
             80 + round(overall_fraction * 19),
             detail,
         )
+
+
+class PolishMusicSourcesLookupWorker(QObject):
+    log = Signal(str)
+    completed = Signal(object)
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, scan_issues):
+        super().__init__()
+        self.scan_issues = tuple(scan_issues)
+
+    @Slot()
+    def run(self):
+        try:
+            session = requests.Session()
+            lookup_results = []
+
+            for issue in self.scan_issues:
+                metadata = issue.source_metadata
+
+                if metadata is None:
+                    lookup_results.append(
+                        (
+                            issue,
+                            (),
+                        )
+                    )
+                    continue
+
+                self.log.emit(
+                    "Wyszukiwanie w Polish Music Sources: "
+                    f"{metadata.siglum} "
+                    f"{metadata.shelfmark}"
+                )
+
+                try:
+                    search_results = search_manuscripts(
+                        session,
+                        metadata,
+                    )
+                except (
+                    requests.RequestException,
+                    TypeError,
+                    ValueError,
+                ) as error:
+                    self.log.emit(
+                        f"Nie udało się wyszukać źródła {issue.group_key}: {error}"
+                    )
+                    search_results = ()
+
+                resolved_results = []
+
+                for search_result in search_results:
+                    try:
+                        download_info = get_polish_music_sources_download_info(
+                            session,
+                            search_result.url,
+                        )
+                    except (
+                        requests.RequestException,
+                        TypeError,
+                        ValueError,
+                    ) as error:
+                        self.log.emit(
+                            "Nie udało się pobrać informacji "
+                            f"o źródle {search_result.title}: "
+                            f"{error}"
+                        )
+                        continue
+
+                    resolved_results.append(
+                        (
+                            search_result,
+                            download_info,
+                        )
+                    )
+
+                lookup_results.append(
+                    (
+                        issue,
+                        tuple(resolved_results),
+                    )
+                )
+
+            self.completed.emit(tuple(lookup_results))
+
+        except Exception as error:  # noqa: BLE001
+            self.failed.emit(str(error))
+        finally:
+            self.finished.emit()

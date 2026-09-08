@@ -1,6 +1,8 @@
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QGraphicsDropShadowEffect
-
+from PySide6.QtWidgets import (
+    QGraphicsDropShadowEffect,
+    QPushButton,
+)
 
 STYLESHEET = """
 QWidget {
@@ -252,6 +254,12 @@ QPushButton#primaryButton:hover {
     );
 }
 
+QPushButton#primaryButton:disabled {
+    border-color: #303946;
+    background-color: #252c35;
+    color: #657181;
+}
+
 QPushButton:disabled {
     border-color: #303946;
     background-color: #252c35;
@@ -326,15 +334,17 @@ def apply_widget_shadows(window):
         y_offset=7,
         opacity=125,
     )
-    add_shadow(
-        window.sync_button,
-        blur_radius=30,
-        y_offset=8,
-        opacity=135,
-    )
-    add_shadow(
-        window.log_view,
-        blur_radius=26,
-        y_offset=6,
-        opacity=100,
-    )
+    for button in window.findChildren(QPushButton):
+        add_shadow(
+            button,
+            blur_radius=30,
+            y_offset=8,
+            opacity=135,
+        )
+
+        add_shadow(
+            window.log_view,
+            blur_radius=26,
+            y_offset=6,
+            opacity=100,
+        )

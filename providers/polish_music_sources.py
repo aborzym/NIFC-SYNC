@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import tempfile
@@ -5,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import requests
 
@@ -20,6 +21,18 @@ API_URL = (
 STORAGE_URL = (
     "https://storage.nifc.pl/web_files/_plik/"
     "museum/manuscripts/{manuscript_id}/{filename}"
+)
+
+PDF_URL = (
+    "https://repozytorium.nifc.pl/islandora/object/{repo_id}/datastream/PDF/download"
+)
+
+SEARCH_API_URL = (
+    "https://api.nifc.pl/v2/index.php/Search_engine_popc2/search/0/{limit}?lang=pl"
+)
+
+MANUSCRIPT_PAGE_URL = (
+    "https://polish.musicsources.pl/pl/lokalizacje/galeria/rekopisy/{manuscript_id}/1"
 )
 
 
@@ -38,6 +51,17 @@ class DownloadInfo:
     manuscript_id: str
     title: str
     scans: tuple[ScanInfo, ...]
+    pdf_url: str
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    manuscript_id: str
+    title: str
+    siglum: str
+    shelfmark: str
+    rism_id: str
+    url: str
 
 
 def supports(scan_url: str) -> bool:
@@ -98,17 +122,177 @@ def get_download_info(
             )
         )
 
-    title = data.get("title") or "bez tytułu"
+    title = data.get("standardized_title") or data.get("title") or "bez tytułu"
+    repo_id = str(data.get("repo_id") or "").strip()
+
+    if not repo_id:
+        raise ValueError(
+            f"API nie zwróciło identyfikatora PDF rękopisu {manuscript_id}."
+        )
+
+    pdf_url = PDF_URL.format(
+        repo_id=quote(
+            repo_id,
+            safe="",
+        )
+    )
+    pdf_response = session.head(
+        pdf_url,
+        allow_redirects=True,
+        timeout=30,
+    )
+    pdf_response.raise_for_status()
+
+    content_type = (
+        pdf_response.headers.get(
+            "Content-Type",
+            "",
+        )
+        .split(
+            ";",
+            1,
+        )[0]
+        .strip()
+        .lower()
+    )
+
+    if content_type != "application/pdf":
+        raise ValueError(f"Serwer nie zwrócił pliku PDF dla rękopisu {manuscript_id}.")
+
+    size_header = pdf_response.headers.get("Content-Length")
+    size = int(size_header) if size_header else None
+    safe_title = re.sub(
+        r'[\\/:*?"<>|]+',
+        "-",
+        title,
+    ).strip(" .")
 
     return DownloadInfo(
         url=scan_url,
-        filename=f"{manuscript_id} — {title}",
-        size=None,
-        content_type=f"{len(scans)} × JPEG",
+        filename=(f"{manuscript_id} — {safe_title or 'bez tytułu'}.pdf"),
+        size=size,
+        content_type="PDF",
         manuscript_id=manuscript_id,
         title=title,
         scans=tuple(scans),
+        pdf_url=pdf_url,
     )
+
+
+def _normalize_reference(value):
+    return re.sub(
+        r"[\W_]+",
+        "",
+        str(value or "").casefold(),
+    )
+
+
+def _search_api(
+    session,
+    keyword,
+    limit=50,
+):
+    response = session.post(
+        SEARCH_API_URL.format(limit=limit),
+        data={
+            "data": json.dumps(
+                {
+                    "keyword": keyword,
+                    "search_fields": [],
+                },
+                ensure_ascii=False,
+            ),
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if not isinstance(data, list):
+        raise TypeError(
+            "Wyszukiwarka Polish Music Sources zwróciła nieprawidłową odpowiedź."
+        )
+
+    return data
+
+
+def _matches_source_metadata(candidate, metadata):
+    candidate_rism_id = _normalize_reference(candidate.get("rism_id"))
+    expected_rism_id = _normalize_reference(metadata.rism_id)
+
+    if expected_rism_id and candidate_rism_id == expected_rism_id:
+        return True
+
+    expected_siglum = _normalize_reference(metadata.siglum)
+    expected_shelfmark = _normalize_reference(metadata.shelfmark)
+
+    if not expected_siglum or not expected_shelfmark:
+        return False
+
+    return (
+        _normalize_reference(candidate.get("library_siglum")) == expected_siglum
+        and _normalize_reference(candidate.get("shelfmark")) == expected_shelfmark
+    )
+
+
+def search_manuscripts(
+    session,
+    metadata,
+):
+    keywords = []
+
+    for value in (
+        metadata.rism_id,
+        metadata.shelfmark,
+    ):
+        value = str(value or "").strip()
+
+        if value and value not in keywords:
+            keywords.append(value)
+
+    matches = {}
+
+    for keyword in keywords:
+        for candidate in _search_api(
+            session,
+            keyword,
+        ):
+            if candidate.get("type") != "manuscripts":
+                continue
+
+            if not _matches_source_metadata(
+                candidate,
+                metadata,
+            ):
+                continue
+
+            manuscript_id = str(candidate.get("id_object") or "").strip()
+
+            if not manuscript_id:
+                continue
+
+            title = (
+                candidate.get("standardized_title")
+                or candidate.get("title")
+                or candidate.get("title_on_source")
+                or "bez tytułu"
+            )
+
+            matches[manuscript_id] = SearchResult(
+                manuscript_id=manuscript_id,
+                title=str(title).strip(),
+                siglum=str(candidate.get("library_siglum") or "").strip(),
+                shelfmark=str(candidate.get("shelfmark") or "").strip(),
+                rism_id=str(candidate.get("rism_id") or "").strip(),
+                url=MANUSCRIPT_PAGE_URL.format(
+                    manuscript_id=manuscript_id,
+                ),
+            )
+
+        if matches:
+            break
+
+    return tuple(matches.values())
 
 
 def download_and_extract(
@@ -116,12 +300,20 @@ def download_and_extract(
     info: DownloadInfo,
     destination_folder: Path,
     progress_callback: (Callable[[int, int | None], None] | None) = None,
+    output_folder_name="skany",
 ) -> Path:
-    scans_folder = destination_folder / "skany"
-    problem_path = destination_folder / "problem.txt"
+    scans_folder = destination_folder / output_folder_name
+    problem_path = (
+        destination_folder / "problem.txt"
+        if output_folder_name == "skany"
+        else destination_folder / f"{output_folder_name}.problem.txt"
+    )
 
     if scans_folder.exists():
         raise FileExistsError(f"Folder już istnieje: {scans_folder}")
+
+    if Path(info.filename).name != info.filename:
+        raise ValueError("Nieprawidłowa nazwa pliku PDF.")
 
     staging_folder = Path(
         tempfile.mkdtemp(
@@ -129,122 +321,68 @@ def download_and_extract(
             dir=destination_folder,
         )
     )
+    partial_path = staging_folder / f"{info.filename}.part"
+    target_path = staging_folder / info.filename
     downloaded_size = 0
-    failures = []
 
     try:
-        filenames = [scan.filename for scan in info.scans]
+        with session.get(
+            info.pdf_url,
+            stream=True,
+            timeout=60,
+        ) as response:
+            response.raise_for_status()
 
-        if len(filenames) != len(set(filenames)):
-            raise ValueError("API zwróciło powtarzające się nazwy skanów.")
-
-        for scan in info.scans:
-            if Path(scan.filename).name != scan.filename:
-                failures.append(
-                    (
-                        scan.filename,
-                        "Niebezpieczna nazwa pliku.",
-                    )
+            content_type = (
+                response.headers.get(
+                    "Content-Type",
+                    "",
                 )
-                continue
+                .split(
+                    ";",
+                    1,
+                )[0]
+                .strip()
+                .lower()
+            )
 
-            target_path = staging_folder / scan.filename
-            partial_path = target_path.with_suffix(target_path.suffix + ".part")
+            if content_type != "application/pdf":
+                raise ValueError(
+                    "Serwer zwrócił nieoczekiwany "
+                    f"typ pliku: "
+                    f"{content_type or 'nieznany'}."
+                )
 
-            try:
-                with session.get(
-                    scan.url,
-                    stream=True,
-                    timeout=60,
-                ) as response:
-                    response.raise_for_status()
+            size_header = response.headers.get("Content-Length")
+            expected_size = int(size_header) if size_header else info.size
 
-                    content_type = response.headers.get(
-                        "Content-Type",
-                        "",
-                    ).lower()
+            with partial_path.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=256 * 1024):
+                    if not chunk:
+                        continue
 
-                    if not content_type.startswith("image/jpeg"):
-                        raise ValueError(
-                            f"Nieoczekiwany typ: {content_type or 'nieznany'}"
+                    output.write(chunk)
+                    downloaded_size += len(chunk)
+
+                    if progress_callback:
+                        progress_callback(
+                            downloaded_size,
+                            expected_size,
                         )
 
-                    expected_size_header = response.headers.get("Content-Length")
-                    expected_size = (
-                        int(expected_size_header) if expected_size_header else None
-                    )
-                    file_size = 0
+        if downloaded_size == 0:
+            raise ValueError("Pobrano pusty plik PDF.")
 
-                    with partial_path.open("wb") as output:
-                        for chunk in response.iter_content(chunk_size=64 * 1024):
-                            if not chunk:
-                                continue
-
-                            output.write(chunk)
-                            chunk_size = len(chunk)
-                            file_size += chunk_size
-                            downloaded_size += chunk_size
-
-                            if progress_callback:
-                                progress_callback(
-                                    downloaded_size,
-                                    None,
-                                )
-
-                if file_size == 0:
-                    raise ValueError("Pobrano pusty plik.")
-
-                if expected_size is not None and file_size != expected_size:
-                    raise ValueError(f"Niepełny plik: {file_size} z {expected_size} B.")
-
-                partial_path.rename(target_path)
-
-            except (
-                requests.RequestException,
-                OSError,
-                ValueError,
-            ) as error:
-                partial_path.unlink(missing_ok=True)
-                failures.append(
-                    (
-                        scan.filename,
-                        str(error),
-                    )
-                )
-
-        if failures:
-            report_lines = [
-                "NIFC-SYNC — raport problemu",
-                "",
-                "Nie utworzono folderu skany, ponieważ pakiet jest niekompletny.",
-                "",
-                f"Data: {datetime.now().astimezone().isoformat(timespec='seconds')}",
-                f"Źródło: {info.url}",
-                f"ID rękopisu: {info.manuscript_id}",
-                f"Tytuł: {info.title}",
-                f"Oczekiwano skanów: {len(info.scans)}",
-                f"Nie pobrano: {len(failures)}",
-                "",
-                "Problemy:",
-            ]
-
-            for filename, error in failures:
-                report_lines.append(f"- {filename}: {error}")
-
-            problem_path.write_text(
-                "\n".join(report_lines) + "\n",
-                encoding="utf-8",
-            )
-
-            raise OSError(f"Pakiet skanów jest niekompletny. Szczegóły: {problem_path}")
-
-        downloaded_files = list(staging_folder.glob("*.jpeg"))
-
-        if len(downloaded_files) != len(info.scans):
+        if expected_size is not None and downloaded_size != expected_size:
             raise ValueError(
-                "Liczba zapisanych skanów nie zgadza się z odpowiedzią API."
+                f"Niepełny plik PDF: {downloaded_size} z {expected_size} B."
             )
 
+        with partial_path.open("rb") as pdf_file:
+            if pdf_file.read(5) != b"%PDF-":
+                raise ValueError("Pobrany plik nie jest prawidłowym dokumentem PDF.")
+
+        partial_path.rename(target_path)
         staging_folder.rename(scans_folder)
 
         if problem_path.exists():
@@ -256,11 +394,35 @@ def download_and_extract(
             if existing_report.startswith("NIFC-SYNC — raport problemu"):
                 problem_path.unlink()
 
-    except Exception:
+    except Exception as error:
         shutil.rmtree(
             staging_folder,
             ignore_errors=True,
         )
+
+        report_lines = [
+            "NIFC-SYNC — raport problemu",
+            "",
+            "Nie pobrano kompletnego pliku PDF.",
+            "",
+            (f"Data: {datetime.now().astimezone().isoformat(timespec='seconds')}"),
+            f"Źródło: {info.url}",
+            f"PDF: {info.pdf_url}",
+            f"ID rękopisu: {info.manuscript_id}",
+            f"Tytuł: {info.title}",
+            f"Pobrano bajtów: {downloaded_size}",
+            "",
+            f"Problem: {error}",
+        ]
+
+        try:
+            problem_path.write_text(
+                "\n".join(report_lines) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
         raise
 
     return scans_folder
