@@ -39,11 +39,12 @@ class ScanSelectionDialog(QDialog):
 
         self.table = QTableWidget(
             len(self.plans),
-            6,
+            7,
         )
         self.table.setHorizontalHeaderLabels(
             (
                 "Utwór / sygnatura",
+                "Znaleziony dokument",
                 "Stan",
                 "Źródło",
                 "Folder docelowy",
@@ -60,11 +61,12 @@ class ScanSelectionDialog(QDialog):
         header.setStretchLastSection(False)
 
         initial_widths = (
-            280,  # Utwór / sygnatura
-            170,  # Stan
-            130,  # Źródło
-            220,  # Folder docelowy
-            90,  # Format
+            250,  # Utwór / sygnatura
+            190,  # Znaleziony dokument
+            150,  # Stan
+            120,  # Źródło
+            200,  # Folder docelowy
+            70,  # Format
             80,  # Rozmiar
         )
 
@@ -82,19 +84,40 @@ class ScanSelectionDialog(QDialog):
             name_item.setToolTip(plan.transcription_name)
             self.table.setItem(row, 0, name_item)
 
+            document_title = (
+                getattr(
+                    plan.download_info,
+                    "title",
+                    None,
+                )
+                or plan.download_info.filename
+            )
+            document_item = QTableWidgetItem(document_title)
+            document_item.setToolTip(document_title)
+            self.table.setItem(
+                row,
+                1,
+                document_item,
+            )
+
             if plan.is_incomplete:
                 status_item = QTableWidgetItem("Niekompletny — do naprawy")
                 status_item.setForeground(QColor("#f4b86a"))
             else:
                 status_item = QTableWidgetItem("Brak — do pobrania")
                 status_item.setForeground(QColor("#9fb2c8"))
+
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 1, status_item)
+            self.table.setItem(
+                row,
+                2,
+                status_item,
+            )
 
             host = urlparse(plan.source_url).netloc or "nieznane"
             self.table.setItem(
                 row,
-                2,
+                3,
                 QTableWidgetItem(host),
             )
 
@@ -105,7 +128,7 @@ class ScanSelectionDialog(QDialog):
             destination_item.setToolTip(str(target_path))
             self.table.setItem(
                 row,
-                3,
+                4,
                 destination_item,
             )
 
@@ -113,12 +136,21 @@ class ScanSelectionDialog(QDialog):
                 plan.download_info.content_type or "nieznany"
             )
             format_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 4, format_item)
+            self.table.setItem(
+                row,
+                5,
+                format_item,
+            )
+
             size_item = QTableWidgetItem(format_file_size(plan.download_info.size))
             size_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
-            self.table.setItem(row, 5, size_item)
+            self.table.setItem(
+                row,
+                6,
+                size_item,
+            )
 
         self.table.itemChanged.connect(self._update_summary)
         layout.addWidget(self.table, stretch=1)

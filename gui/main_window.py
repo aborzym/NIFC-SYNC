@@ -27,10 +27,27 @@ from core.credentials import (
     CredentialStore,
     CredentialStoreError,
 )
-from core.network import format_smb_location
+from core.destinations import (
+    scan_package_folder_name,
+)
+from core.network import (
+    find_mounted_smb_path,
+    format_smb_location,
+)
+from core.scan_manifest import (
+    validate_scan_manifest,
+)
+from core.scan_sync import ScanDownloadRequest
 from gui.first_run_dialog import FirstRunDialog
+from gui.network_dialog import NetworkBrowserDialog
 from gui.scan_dialog import ScanSelectionDialog
-from gui.workers import CatalogLoader, ScanDownloadWorker, SyncWorker
+from gui.workers import (
+    CatalogLoader,
+    PolishMusicSourcesLookupWorker,
+    ScanDownloadWorker,
+    SyncWorker,
+)
+from providers import polish_music_sources
 
 
 class MainWindow(QMainWindow):
@@ -48,6 +65,8 @@ class MainWindow(QMainWindow):
         self.sync_worker = None
         self.scan_thread = None
         self.scan_worker = None
+        self.lookup_thread = None
+        self.lookup_worker = None
         self.pending_summary = None
         self.pending_scan_plans = ()
         self.activity_frame = 0
@@ -325,7 +344,80 @@ class MainWindow(QMainWindow):
     def show_ready_message(self):
         self.log_view.append("Interfejs uruchomiony.")
 
+    def _restore_network_share(
+        self,
+        configuration,
+    ):
+        if configuration.storage_kind != "mounted" or (
+            configuration.destination is not None and configuration.destination.is_dir()
+        ):
+            return configuration
+
+        question = QMessageBox(self)
+        question.setIcon(QMessageBox.Icon.Question)
+        question.setWindowTitle("Udział sieciowy nie jest zamontowany")
+        question.setText(
+            "Katalog sieciowy tego konta nie jest "
+            "obecnie dostępny.\n\n"
+            "Czy zamontować udział teraz?"
+        )
+        mount_button = question.addButton(
+            "Zamontuj udział",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        question.addButton(
+            "Anuluj",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        question.setDefaultButton(mount_button)
+        question.exec()
+
+        if question.clickedButton() is not mount_button:
+            return None
+
+        network_dialog = NetworkBrowserDialog(self)
+
+        if network_dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        share = network_dialog.selected_share
+
+        if share is None:
+            return None
+
+        destination = find_mounted_smb_path(share.uri)
+
+        if destination is None:
+            QMessageBox.warning(
+                self,
+                "Nie znaleziono zamontowanego udziału",
+                (
+                    "Udział został zamontowany, ale "
+                    "program nie odnalazł jego "
+                    "lokalnego katalogu."
+                ),
+            )
+            return None
+
+        configuration = replace(
+            configuration,
+            destination=destination,
+            network_url=share.uri,
+        )
+        self.configuration_store.save(configuration)
+        self._apply_configuration(configuration)
+
+        return configuration
+
     def load_catalog(self):
+        configuration = self.configuration_store.load()
+        configuration = self._restore_network_share(configuration)
+
+        if configuration is None:
+            return
+
+        self.statusBar().clearMessage()
+        self.sync_button.setEnabled(False)
         self.statusBar().clearMessage()
         self.sync_button.setEnabled(False)
         self.connection_button.setText("Łączenie…")
@@ -337,7 +429,6 @@ class MainWindow(QMainWindow):
         self.connection_label.style().unpolish(self.connection_label)
         self.connection_label.style().polish(self.connection_label)
         self._start_activity_indicator()
-        configuration = self.configuration_store.load()
 
         try:
             credentials = self.credential_store.load(configuration.nifc_username)
@@ -586,13 +677,209 @@ class MainWindow(QMainWindow):
             self._update_sync_button()
             return
 
-        QTimer.singleShot(0, self._offer_scan_downloads)
+        QTimer.singleShot(
+            0,
+            self._offer_polish_music_sources_lookup,
+        )
+
+    def _offer_polish_music_sources_lookup(self):
+        summary = self.pending_summary
+
+        if summary is None:
+            return
+
+        searchable_issues = tuple(
+            issue
+            for issue in summary.get(
+                "scan_issues",
+                (),
+            )
+            if (
+                issue.source_metadata is not None
+                and (
+                    issue.source_metadata.rism_id
+                    or (
+                        issue.source_metadata.siglum and issue.source_metadata.shelfmark
+                    )
+                )
+            )
+        )
+
+        if not searchable_issues:
+            self._offer_scan_downloads()
+            return
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setWindowTitle("Wyszukiwanie skanów")
+        dialog.setText(
+            "Nie znaleziono skanów pod zapisanym "
+            f"adresem dla {len(searchable_issues)} "
+            "źródeł.\n\n"
+            "Czy wyszukać je w Polish Music Sources?"
+        )
+
+        search_button = dialog.addButton(
+            "Wyszukaj w Polish Music Sources",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.addButton(
+            "Pomiń",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        dialog.setDefaultButton(search_button)
+        dialog.exec()
+
+        if dialog.clickedButton() is not search_button:
+            self._offer_scan_downloads()
+            return
+
+        self._start_polish_music_sources_lookup(searchable_issues)
+
+    def _start_polish_music_sources_lookup(
+        self,
+        scan_issues,
+    ):
+        self.statusBar().showMessage("Wyszukiwanie skanów…")
+        self.progress_stage_label.setText("Wyszukiwanie w Polish Music Sources…")
+        self.pending_lookup_results = None
+
+        self.lookup_thread = QThread(self)
+        self.lookup_worker = PolishMusicSourcesLookupWorker(scan_issues)
+        self.lookup_worker.moveToThread(self.lookup_thread)
+
+        self.lookup_thread.started.connect(self.lookup_worker.run)
+        self.lookup_worker.log.connect(self.log_view.append)
+        self.lookup_worker.completed.connect(
+            self._polish_music_sources_lookup_completed
+        )
+        self.lookup_worker.failed.connect(self._polish_music_sources_lookup_failed)
+        self.lookup_worker.finished.connect(self.lookup_thread.quit)
+        self.lookup_worker.finished.connect(self.lookup_worker.deleteLater)
+        self.lookup_thread.finished.connect(self.lookup_thread.deleteLater)
+        self.lookup_thread.finished.connect(self._polish_music_sources_lookup_finished)
+        self.lookup_thread.start()
+
+    def _polish_music_sources_lookup_completed(
+        self,
+        lookup_results,
+    ):
+        self.pending_lookup_results = tuple(lookup_results)
+
+    def _polish_music_sources_lookup_failed(
+        self,
+        message,
+    ):
+        self.pending_lookup_results = ()
+        self.log_view.append(f"\nNIE UDAŁO SIĘ WYSZUKAĆ SKANÓW: {message}")
+
+    def _polish_music_sources_lookup_finished(self):
+        self.lookup_thread = None
+        self.lookup_worker = None
+        lookup_results = self.pending_lookup_results or ()
+        self.pending_lookup_results = None
+        configuration = self.configuration_store.load()
+        found_plans = []
+        resolved_issues = []
+
+        for issue, results in lookup_results:
+            metadata = issue.source_metadata
+
+            if not results:
+                self.log_view.append("\nNIE ZNALEZIONO W POLISH MUSIC SOURCES:")
+                self.log_view.append(f"  ŹRÓDŁO: {issue.group_key}")
+                self.log_view.append(
+                    f"  SIGLUM I SYGNATURA: {metadata.siglum} {metadata.shelfmark}"
+                )
+                continue
+
+            if len(results) > 1:
+                self.log_view.append(
+                    "\nZNALEZIONO KILKA PASUJĄCYCH ŹRÓDEŁ — WYMAGANY WYBÓR RĘCZNY:"
+                )
+
+                for search_result, _download_info in results:
+                    self.log_view.append(
+                        "  "
+                        f"{search_result.title} — "
+                        f"{search_result.siglum} "
+                        f"{search_result.shelfmark}"
+                    )
+                    self.log_view.append(f"  {search_result.url}")
+
+                continue
+
+            search_result, download_info = results[0]
+
+            self.log_view.append("\nZNALEZIONO W POLISH MUSIC SOURCES:")
+            self.log_view.append(f"  TYTUŁ: {search_result.title}")
+            self.log_view.append(
+                "  SIGLUM I SYGNATURA: "
+                f"{search_result.siglum} "
+                f"{search_result.shelfmark}"
+            )
+            self.log_view.append(f"  LICZBA SKANÓW: {len(download_info.scans)}")
+            self.log_view.append(f"  ADRES: {search_result.url}")
+
+            if issue.destination_folder is None:
+                continue
+
+            if configuration.naming_profile in (
+                "marta-lawrence",
+                "andrzej-kubiczek",
+            ):
+                output_folder_name = scan_package_folder_name(download_info.filename)
+            else:
+                output_folder_name = "skany"
+
+            scans_folder = issue.destination_folder / output_folder_name
+            manifest_status = validate_scan_manifest(
+                scans_folder,
+                verify_sizes=False,
+            )
+
+            if scans_folder.exists() and manifest_status is not False:
+                self.log_view.append(f"  SKANY JUŻ ISTNIEJĄ: {scans_folder}")
+                resolved_issues.append(issue)
+                continue
+
+            found_plans.append(
+                ScanDownloadRequest(
+                    group_key=issue.group_key,
+                    transcription_name=(issue.transcription_names[0]),
+                    source_url=search_result.url,
+                    destination_folder=(issue.destination_folder),
+                    download_info=download_info,
+                    provider=polish_music_sources,
+                    is_incomplete=(scans_folder.exists() and manifest_status is False),
+                    output_folder_name=(output_folder_name),
+                )
+            )
+            resolved_issues.append(issue)
+
+        self.pending_scan_plans = tuple(self.pending_scan_plans) + tuple(found_plans)
+
+        if self.pending_summary is not None:
+            self.pending_summary["scan_issues"] = tuple(
+                issue
+                for issue in self.pending_summary.get(
+                    "scan_issues",
+                    (),
+                )
+                if issue not in resolved_issues
+            )
+
+        QTimer.singleShot(
+            0,
+            self._offer_scan_downloads,
+        )
 
     def _offer_scan_downloads(self):
         summary = self.pending_summary
         plans = self.pending_scan_plans
         self.pending_summary = None
         self.pending_scan_plans = ()
+        self.pending_lookup_results = None
 
         if not plans:
             self._finish_synchronization(summary)

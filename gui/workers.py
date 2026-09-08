@@ -15,6 +15,12 @@ from core.network import format_smb_location
 from core.scan_sync import download_scan_plans, plan_scans
 from core.scans import get_scan_group_key
 from core.sync import sync_transcriptions
+from providers.polish_music_sources import (
+    get_download_info as get_polish_music_sources_download_info,
+)
+from providers.polish_music_sources import (
+    search_manuscripts,
+)
 
 
 class CatalogLoader(QObject):
@@ -276,3 +282,94 @@ class ScanDownloadWorker(QObject):
             80 + round(overall_fraction * 19),
             detail,
         )
+
+
+class PolishMusicSourcesLookupWorker(QObject):
+    log = Signal(str)
+    completed = Signal(object)
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, scan_issues):
+        super().__init__()
+        self.scan_issues = tuple(scan_issues)
+
+    @Slot()
+    def run(self):
+        try:
+            session = requests.Session()
+            lookup_results = []
+
+            for issue in self.scan_issues:
+                metadata = issue.source_metadata
+
+                if metadata is None:
+                    lookup_results.append(
+                        (
+                            issue,
+                            (),
+                        )
+                    )
+                    continue
+
+                self.log.emit(
+                    "Wyszukiwanie w Polish Music Sources: "
+                    f"{metadata.siglum} "
+                    f"{metadata.shelfmark}"
+                )
+
+                try:
+                    search_results = search_manuscripts(
+                        session,
+                        metadata,
+                    )
+                except (
+                    requests.RequestException,
+                    TypeError,
+                    ValueError,
+                ) as error:
+                    self.log.emit(
+                        f"Nie udało się wyszukać źródła {issue.group_key}: {error}"
+                    )
+                    search_results = ()
+
+                resolved_results = []
+
+                for search_result in search_results:
+                    try:
+                        download_info = get_polish_music_sources_download_info(
+                            session,
+                            search_result.url,
+                        )
+                    except (
+                        requests.RequestException,
+                        TypeError,
+                        ValueError,
+                    ) as error:
+                        self.log.emit(
+                            "Nie udało się pobrać informacji "
+                            f"o źródle {search_result.title}: "
+                            f"{error}"
+                        )
+                        continue
+
+                    resolved_results.append(
+                        (
+                            search_result,
+                            download_info,
+                        )
+                    )
+
+                lookup_results.append(
+                    (
+                        issue,
+                        tuple(resolved_results),
+                    )
+                )
+
+            self.completed.emit(tuple(lookup_results))
+
+        except Exception as error:  # noqa: BLE001
+            self.failed.emit(str(error))
+        finally:
+            self.finished.emit()

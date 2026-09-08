@@ -39,6 +39,7 @@ class ScanIssue:
     source_url: str
     reason: str
     source_metadata: object | None = None
+    destination_folder: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,7 @@ def plan_scans(
                         source_url=source["url"],
                         reason=reason,
                         source_metadata=(extract_scan_source_metadata(primary_file)),
+                        destination_folder=(destination_folder),
                     )
                 )
             continue

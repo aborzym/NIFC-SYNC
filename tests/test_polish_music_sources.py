@@ -7,55 +7,130 @@ from core.scans import ScanSourceMetadata
 from providers.polish_music_sources import (
     SearchResult,
     download_and_extract,
+    get_download_info,
     search_manuscripts,
 )
+
+
+class GetDownloadInfoTest(unittest.TestCase):
+    def test_uses_available_pdf(self):
+        detail_response = Mock()
+        detail_response.json.return_value = {
+            "repo_id": "pl-kk:1170",
+            "standardized_title": ("94 Sacred songs"),
+            "gallery": [
+                {
+                    "file_name": "1171.jpeg",
+                },
+                {
+                    "file_name": "1172.jpeg",
+                },
+            ],
+        }
+
+        pdf_response = Mock()
+        pdf_response.headers = {
+            "Content-Type": "application/pdf",
+            "Content-Length": "382346729",
+        }
+
+        session = Mock()
+        session.get.return_value = detail_response
+        session.head.return_value = pdf_response
+
+        info = get_download_info(
+            session,
+            ("https://polish.musicsources.pl/pl/lokalizacje/galeria/rekopisy/5919/1"),
+        )
+
+        self.assertEqual(
+            info.filename,
+            "5919 — 94 Sacred songs.pdf",
+        )
+        self.assertEqual(
+            info.size,
+            382346729,
+        )
+        self.assertEqual(
+            info.content_type,
+            "PDF",
+        )
+        self.assertEqual(
+            info.pdf_url,
+            (
+                "https://repozytorium.nifc.pl/"
+                "islandora/object/pl-kk%3A1170/"
+                "datastream/PDF/download"
+            ),
+        )
+        self.assertEqual(
+            len(info.scans),
+            2,
+        )
+        pdf_response.raise_for_status.assert_called_once_with()
 
 
 class DownloadAndExtractTest(unittest.TestCase):
     def test_downloads_to_named_output_folder(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             destination_folder = Path(temporary_directory)
-            jpeg_content = b"example-jpeg-content"
+            pdf_content = b"%PDF-1.7\nexample-pdf-content"
+            pdf_url = (
+                "https://repozytorium.nifc.pl/"
+                "islandora/object/pl-kk%3A1170/"
+                "datastream/PDF/download"
+            )
 
             response = MagicMock()
             response.headers = {
-                "Content-Type": "image/jpeg",
-                "Content-Length": str(len(jpeg_content)),
+                "Content-Type": "application/pdf",
+                "Content-Length": str(len(pdf_content)),
             }
-            response.iter_content.return_value = (jpeg_content,)
+            response.iter_content.return_value = (pdf_content,)
             response.__enter__.return_value = response
             response.__exit__.return_value = False
 
             session = MagicMock()
             session.get.return_value = response
-            scan = Mock(
-                filename="001.jpeg",
-                url="https://example.test/001.jpeg",
-            )
             info = Mock(
-                url="https://example.test/manuscript",
-                manuscript_id="1234",
-                title="Missa",
-                scans=(scan,),
+                url=(
+                    "https://polish.musicsources.pl/"
+                    "pl/lokalizacje/galeria/"
+                    "rekopisy/5919/1"
+                ),
+                pdf_url=pdf_url,
+                filename=("5919 — 94 Sacred songs.pdf"),
+                size=len(pdf_content),
+                manuscript_id="5919",
+                title="94 Sacred songs",
             )
 
             result = download_and_extract(
                 session,
                 info,
                 destination_folder,
-                output_folder_name="1234_Missa",
+                output_folder_name=("5919 — 94 Sacred songs"),
             )
+
+            expected_pdf = result / "5919 — 94 Sacred songs.pdf"
 
             self.assertEqual(
                 result,
-                destination_folder / "1234_Missa",
+                destination_folder / "5919 — 94 Sacred songs",
             )
             self.assertEqual(
-                (result / "001.jpeg").read_bytes(),
-                jpeg_content,
+                expected_pdf.read_bytes(),
+                pdf_content,
             )
             self.assertFalse((destination_folder / "skany").exists())
-            self.assertFalse((destination_folder / "1234_Missa.problem.txt").exists())
+            self.assertFalse(
+                (destination_folder / ("5919 — 94 Sacred songs.problem.txt")).exists()
+            )
+            session.get.assert_called_once_with(
+                pdf_url,
+                stream=True,
+                timeout=60,
+            )
 
 
 class SearchManuscriptsTest(unittest.TestCase):

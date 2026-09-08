@@ -608,6 +608,10 @@ class DownloadScanPlansTest(unittest.TestCase):
             scan_issues[0].source_metadata.title,
             "Na Wawelu",
         )
+        self.assertEqual(
+            scan_issues[0].destination_folder,
+            Path("/tmp/project"),
+        )
 
 
 if __name__ == "__main__":

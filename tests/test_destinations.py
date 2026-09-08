@@ -251,6 +251,16 @@ class DestinationResolverTest(unittest.TestCase):
             scan_package_folder_name("pakiet.ZIP"),
             "pakiet",
         )
+
+        self.assertEqual(
+            scan_package_folder_name("5919 — 94 Sacred songs.pdf"),
+            "5919 — 94 Sacred songs",
+        )
+        self.assertEqual(
+            scan_package_folder_name("5828 — 55 Sacred songs.PDF"),
+            "5828 — 55 Sacred songs",
+        )
+
         self.assertEqual(
             scan_package_folder_name("WTM-r2017"),
             "WTM-r2017",

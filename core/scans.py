@@ -60,28 +60,20 @@ def extract_scan_source_metadata(
     values = {
         key.strip(): value.strip() for key, value in KRN_REFERENCE_PATTERN.findall(text)
     }
+    filename_stem = Path(api_file["name"]).stem
+    filename_siglum, separator, _remainder = filename_stem.partition("--")
+
+    if separator:
+        filename_siglum = filename_siglum.upper()
+    else:
+        filename_siglum = ""
 
     return ScanSourceMetadata(
-        rism_id=values.get(
-            "NIFC-rismSourceID",
-            "",
-        ),
-        siglum=values.get(
-            "SMS-siglum",
-            "",
-        ),
-        shelfmark=values.get(
-            "SMS-shelfmark",
-            "",
-        ),
-        composer=values.get(
-            "COM",
-            "",
-        ),
-        title=values.get(
-            "OTL",
-            "",
-        ),
+        rism_id=values.get("NIFC-rismSourceID", ""),
+        siglum=(values.get("SMS-siglum") or filename_siglum),
+        shelfmark=values.get("SMS-shelfmark", ""),
+        composer=values.get("COM", ""),
+        title=values.get("OTL", ""),
     )
 
 

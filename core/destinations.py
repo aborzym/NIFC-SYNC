@@ -80,8 +80,13 @@ def scan_package_folder_name(filename):
     if not filename or safe_name != filename or safe_name in (".", ".."):
         raise ValueError("Nieprawidłowa nazwa pakietu skanów.")
 
-    if safe_name.casefold().endswith(".zip"):
-        safe_name = safe_name[:-4]
+    for suffix in (
+        ".zip",
+        ".pdf",
+    ):
+        if safe_name.casefold().endswith(suffix):
+            safe_name = safe_name[: -len(suffix)]
+            break
 
     if not safe_name:
         raise ValueError("Nieprawidłowa nazwa pakietu skanów.")

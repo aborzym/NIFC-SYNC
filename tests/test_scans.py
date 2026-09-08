@@ -36,6 +36,26 @@ class ExtractScanSourceMetadataTests(unittest.TestCase):
             ),
         )
 
+    def test_uses_filename_siglum_when_metadata_is_missing(
+        self,
+    ):
+        content = "!!!OTL: Missa\n!!!SMS-shelfmark: Kk.I.3\n**kern\n*-\n"
+        api_file = {
+            "name": ("pl-kk--kk-i-3--052-003_anonim--missa-agnus-dei.krn"),
+            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        }
+
+        result = extract_scan_source_metadata(api_file)
+
+        self.assertEqual(
+            result.siglum,
+            "PL-KK",
+        )
+        self.assertEqual(
+            result.shelfmark,
+            "Kk.I.3",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
