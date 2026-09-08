@@ -95,14 +95,12 @@ class SyncWorker(QObject):
         selected_workflow,
         available_workflows,
         configuration,
-        verify_scan_sizes=False,
     ):
         super().__init__()
         self.selected_workflow = selected_workflow
         self.available_workflows = available_workflows
         self.configuration = configuration
         self.destination = configuration.destination
-        self.verify_scan_sizes = verify_scan_sizes
 
         if configuration.storage_kind == "mounted" and configuration.network_url:
             self.destination_display = format_smb_location(
@@ -149,7 +147,6 @@ class SyncWorker(QObject):
             inventory = build_storage_inventory(
                 self.destination,
                 inventory_scan_urls_by_group,
-                verify_scan_sizes=(self.verify_scan_sizes),
             )
             self.progress.emit(40)
 
