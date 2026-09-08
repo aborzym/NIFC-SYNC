@@ -7,6 +7,7 @@ import requests
 
 from core.destinations import (
     find_legacy_scan_package_folder,
+    marta_fallback_reason,
     resolve_asset_root,
     scan_package_folder_name,
 )
@@ -151,6 +152,22 @@ def plan_scans(
                 continue
         else:
             destination_folder = target_folders[primary_file["name"]]
+
+        fallback_reason = (
+            marta_fallback_reason(
+                configuration,
+                primary_file["name"],
+                "scans",
+            )
+            if configuration is not None
+            else None
+        )
+
+        if fallback_reason is not None:
+            log(f"UWAGA: {primary_file['name']}")
+            log(f"        -> {fallback_reason}")
+            log(f"        -> skany zapiszę w folderze awaryjnym: {destination_folder}")
+
         provider = find_scan_provider(source["url"])
 
         if provider is None:

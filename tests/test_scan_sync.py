@@ -356,16 +356,26 @@ class DownloadScanPlansTest(unittest.TestCase):
                 f"SKANY JUŻ ISTNIEJĄ W STARYM FOLDERZE: {legacy_folder}"
             )
 
-    def test_skips_marta_library_without_scans_folder(
+    @patch("core.scan_sync.find_scan_provider")
+    def test_marta_uses_fallback_scans_folder(
         self,
+        find_provider,
     ):
         with tempfile.TemporaryDirectory() as temporary_directory:
+            parent_folder = Path(temporary_directory)
             filename = "pl-sa--227-a-vi-31--001-005_anonim--msza-agnus-dei.krn"
             group_key = get_scan_group_key(filename)
             normalized_url = "sandomierz-1551"
             log = Mock()
+            provider = Mock()
+            provider.get_download_info.return_value = Mock(
+                filename=("1483_Missa_in_D_DjVu.zip"),
+                content_type="application/zip",
+                size=1234,
+            )
+            find_provider.return_value = provider
             configuration = AppConfiguration(
-                destination=Path(temporary_directory),
+                destination=parent_folder,
                 naming_profile="marta-lawrence",
             )
 
@@ -398,9 +408,23 @@ class DownloadScanPlansTest(unittest.TestCase):
                 log=log,
             )
 
-            self.assertEqual(plans, ())
-            log.assert_any_call(
-                "BRAK SKONFIGUROWANEGO FOLDERU SKANÓW DLA BIBLIOTEKI — POMIJAM"
+            self.assertEqual(
+                len(plans),
+                1,
+            )
+            self.assertEqual(
+                plans[0].destination_folder,
+                parent_folder / "INNE.źródła",
+            )
+            self.assertEqual(
+                plans[0].output_folder_name,
+                "1483_Missa_in_D_DjVu",
+            )
+            self.assertTrue(
+                any(
+                    "folderze awaryjnym" in call.args[0].casefold()
+                    for call in log.call_args_list
+                )
             )
 
     @patch("core.scan_sync.write_scan_manifest")

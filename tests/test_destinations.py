@@ -117,8 +117,11 @@ class DestinationResolverTest(unittest.TestCase):
             Path("/tmp/WTM.źródła"),
         )
 
-    def test_returns_none_for_unconfigured_library(self):
+    def test_uses_fallback_for_unconfigured_library(
+        self,
+    ):
         configuration = AppConfiguration(
+            destination=Path("/tmp/Marta"),
             naming_profile="marta-lawrence",
         )
 
@@ -128,10 +131,16 @@ class DestinationResolverTest(unittest.TestCase):
             "transcriptions",
         )
 
-        self.assertIsNone(result)
+        self.assertEqual(
+            result,
+            Path("/tmp/Marta/INNE.krn"),
+        )
 
-    def test_returns_none_for_unknown_filename(self):
+    def test_uses_fallback_for_unknown_filename(
+        self,
+    ):
         configuration = AppConfiguration(
+            destination=Path("/tmp/Marta"),
             naming_profile="marta-lawrence",
         )
 
@@ -141,7 +150,10 @@ class DestinationResolverTest(unittest.TestCase):
             "scans",
         )
 
-        self.assertIsNone(result)
+        self.assertEqual(
+            result,
+            Path("/tmp/Marta/INNE.źródła"),
+        )
 
     def test_uses_general_root_for_andrzej_profile(self):
         destination = Path("/tmp/transkrypcje")

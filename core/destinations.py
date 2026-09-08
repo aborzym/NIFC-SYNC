@@ -21,6 +21,32 @@ WORKFLOW_DESTINATION_NAMES = {
 }
 
 
+def marta_fallback_reason(
+    configuration: AppConfiguration,
+    filename,
+    asset_kind: AssetKind,
+):
+    if configuration.naming_profile != "marta-lawrence":
+        return None
+
+    library_id = detect_library_id(filename)
+
+    if library_id is None:
+        return "Nie rozpoznano biblioteki na podstawie nazwy pliku."
+
+    if asset_kind == "transcriptions":
+        path_key = library_transcriptions_path_key(library_id)
+    elif asset_kind == "scans":
+        path_key = library_scans_path_key(library_id)
+    else:
+        raise ValueError(f"Nieznany rodzaj danych: {asset_kind}")
+
+    if configuration.organization_path(path_key) is None:
+        return "Nie skonfigurowano folderu dla rozpoznanej biblioteki."
+
+    return None
+
+
 def resolve_asset_root(
     configuration: AppConfiguration,
     filename,
@@ -47,22 +73,34 @@ def resolve_asset_root(
 
     if configuration.naming_profile != "marta-lawrence":
         return configuration.destination
+
+    if asset_kind == "transcriptions":
+        fallback_folder = "INNE.krn"
+    elif asset_kind == "scans":
+        fallback_folder = "INNE.źródła"
+    else:
+        raise ValueError(f"Nieznany rodzaj danych: {asset_kind}")
+
     library_id = detect_library_id(filename)
 
     if library_id is None:
-        return None
+        if configuration.destination is None:
+            return None
+
+        return configuration.destination / fallback_folder
 
     if asset_kind == "transcriptions":
         path_key = library_transcriptions_path_key(library_id)
-    elif asset_kind == "scans":
-        path_key = library_scans_path_key(library_id)
     else:
-        raise ValueError(f"Nieznany rodzaj danych: {asset_kind}")
+        path_key = library_scans_path_key(library_id)
 
     configured_path = configuration.organization_path(path_key)
 
     if configured_path is None:
-        return None
+        if configuration.destination is None:
+            return None
+
+        return configuration.destination / fallback_folder
 
     if configured_path.is_absolute():
         return configured_path

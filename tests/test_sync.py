@@ -170,9 +170,20 @@ class TranscriptionSyncTest(unittest.TestCase):
             (self.base_dir / ("001 - D - pl-sa--227-a-vi-31--001_msza")).exists()
         )
 
-    def test_marta_skips_unconfigured_library(
+    def test_marta_writes_unknown_library_to_fallback(
         self,
     ):
+        filename = "pl-wnifc--yyy--001-003_soltys--konzert-op-11.musicxml"
+        content = b"<score-partwise/>"
+        workflow = {
+            "name": "XML",
+            "files": (
+                {
+                    "name": filename,
+                    "content": base64.b64encode(content).decode("ascii"),
+                },
+            ),
+        }
         configuration = AppConfiguration(
             destination=self.base_dir,
             naming_profile="marta-lawrence",
@@ -180,7 +191,7 @@ class TranscriptionSyncTest(unittest.TestCase):
         messages = []
 
         result = sync_transcriptions(
-            self.workflow,
+            workflow,
             self.base_dir,
             (),
             1,
@@ -188,15 +199,31 @@ class TranscriptionSyncTest(unittest.TestCase):
             configuration=configuration,
         )
 
-        self.assertEqual(result.created_count, 0)
-        self.assertEqual(result.downloaded_count, 0)
-        self.assertEqual(result.skipped_count, 1)
-        self.assertNotIn(
-            self.filename,
-            result.target_folders,
+        expected_folder = self.base_dir / "INNE.krn"
+        expected_file = expected_folder / filename
+
+        self.assertEqual(
+            expected_file.read_bytes(),
+            content,
+        )
+        self.assertEqual(
+            result.created_count,
+            1,
+        )
+        self.assertEqual(
+            result.downloaded_count,
+            1,
+        )
+        self.assertEqual(
+            result.skipped_count,
+            0,
+        )
+        self.assertEqual(
+            result.target_folders[filename],
+            expected_folder,
         )
         self.assertTrue(
-            any("brak folderu transkrypcji" in message.lower() for message in messages)
+            any("folderze awaryjnym" in message.casefold() for message in messages)
         )
 
 

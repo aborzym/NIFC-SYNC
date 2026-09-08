@@ -2,7 +2,7 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.destinations import resolve_asset_root
+from core.destinations import marta_fallback_reason, resolve_asset_root
 from core.filesystem import find_existing_transcriptions
 
 WORKFLOW_CODES = {
@@ -47,6 +47,17 @@ def _sync_loose_transcriptions(
             log(f"POMIJAM: {api_name}")
             log("        -> brak folderu transkrypcji dla tej biblioteki")
             continue
+
+        fallback_reason = marta_fallback_reason(
+            configuration,
+            api_name,
+            "transcriptions",
+        )
+
+        if fallback_reason is not None:
+            log(f"UWAGA: {api_name}")
+            log(f"        -> {fallback_reason}")
+            log(f"        -> zapisuję w folderze awaryjnym: {target_folder}")
 
         file_path = target_folder / api_name
 
