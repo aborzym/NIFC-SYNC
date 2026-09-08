@@ -27,7 +27,7 @@ class StorageInventoryTests(unittest.TestCase):
 
     @patch("core.inventory.scan_manifest_file_paths")
     @patch("core.inventory.validate_scan_manifest")
-    def test_passes_detailed_check_to_manifest(
+    def test_always_checks_manifest_file_sizes(
         self,
         validate_manifest,
         manifest_paths,
@@ -42,7 +42,6 @@ class StorageInventoryTests(unittest.TestCase):
                     self.normalized_url,
                 },
             },
-            verify_scan_sizes=True,
         )
 
         validate_manifest.assert_called_once_with(
@@ -55,11 +54,13 @@ class StorageInventoryTests(unittest.TestCase):
         "core.inventory.validate_scan_manifest",
         return_value=None,
     )
-    def test_fast_check_does_not_scan_legacy_files(
+    def test_scans_legacy_files(
         self,
         _validate_manifest,
         find_scores,
     ):
+        find_scores.return_value = (self.scan_file,)
+
         result = build_storage_inventory(
             self.base_dir,
             {
@@ -69,13 +70,12 @@ class StorageInventoryTests(unittest.TestCase):
             },
         )
 
-        find_scores.assert_not_called()
-        self.assertIn(
-            self.normalized_url,
-            result.existing_scans_by_url,
+        find_scores.assert_called_once_with(
+            self.scans_folder,
         )
-        self.assertIsNone(
-            result.existing_scans_by_url[self.normalized_url][self.project_folder]
+        self.assertEqual(
+            result.existing_scans_by_url[self.normalized_url][self.project_folder],
+            (self.scan_file,),
         )
 
 

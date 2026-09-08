@@ -5,7 +5,7 @@ oraz pobierania skanów źródłowych.
 
 ## Wersja stabilna
 
-Aktualna stabilna wersja `4.0.0` udostępnia uniwersalny
+Aktualna stabilna wersja `4.0.1` udostępnia uniwersalny
 interfejs graficzny, obsługę wielu kont oraz różne sposoby
 organizowania transkrypcji i skanów. Wcześniejsze wydania
 `3.0.0` i terminalowe `2.0.0` pozostają dostępne.
