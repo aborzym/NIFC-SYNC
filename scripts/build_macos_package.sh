@@ -3,7 +3,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="4.0.0"
+version="4.0.1"
 iconset_dir="${project_dir}/build/NIFC-SYNC.iconset"
 icon_path="${project_dir}/build/NIFC-SYNC.icns"
 application_path="${project_dir}/dist/macos/NIFC-SYNC.app"
