@@ -132,6 +132,67 @@ class DownloadAndExtractTest(unittest.TestCase):
                 timeout=60,
             )
 
+    def test_removes_incomplete_pdf_and_writes_report(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            destination_folder = Path(temporary_directory)
+            pdf_content = b"%PDF-1.7\nincomplete"
+            pdf_url = (
+                "https://repozytorium.nifc.pl/"
+                "islandora/object/pl-kk%3A1170/"
+                "datastream/PDF/download"
+            )
+            output_folder_name = "5919 — 94 Sacred songs"
+
+            response = MagicMock()
+            response.headers = {
+                "Content-Type": "application/pdf",
+                "Content-Length": "1000",
+            }
+            response.iter_content.return_value = (pdf_content,)
+            response.__enter__.return_value = response
+            response.__exit__.return_value = False
+
+            session = MagicMock()
+            session.get.return_value = response
+            info = Mock(
+                url=(
+                    "https://polish.musicsources.pl/"
+                    "pl/lokalizacje/galeria/"
+                    "rekopisy/5919/1"
+                ),
+                pdf_url=pdf_url,
+                filename=("5919 — 94 Sacred songs.pdf"),
+                size=1000,
+                manuscript_id="5919",
+                title="94 Sacred songs",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "Niepełny plik PDF",
+            ):
+                download_and_extract(
+                    session,
+                    info,
+                    destination_folder,
+                    output_folder_name=(output_folder_name),
+                )
+
+            self.assertFalse((destination_folder / output_folder_name).exists())
+            self.assertEqual(
+                tuple(destination_folder.glob(".skany_tmp_*")),
+                (),
+            )
+
+            problem_path = destination_folder / (f"{output_folder_name}.problem.txt")
+            self.assertTrue(problem_path.is_file())
+            self.assertIn(
+                "Nie pobrano kompletnego pliku PDF",
+                problem_path.read_text(encoding="utf-8"),
+            )
+
 
 class SearchManuscriptsTest(unittest.TestCase):
     def test_falls_back_to_exact_siglum_and_shelfmark(

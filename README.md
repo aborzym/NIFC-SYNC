@@ -21,9 +21,10 @@ Obecnie obsługuje:
 - ręczne łączenie z serwisem NIFC;
 - workflowy `XML`, `KRN-diplomatic` i `KRN-modern`;
 - katalogi lokalne oraz udziały SMB;
-- wykrywanie komputerów i montowanie udziałów SMB na Linuksie;
+- wykrywanie, montowanie i ponowne łączenie udziałów SMB na Linuksie;
 - pobieranie skanów z Biblioteki Diecezjalnej w Sandomierzu;
-- pobieranie skanów z Polish Music Sources;
+- wyszukiwanie w Polish Music Sources skanów spod nieaktualnych adresów;
+- pobieranie gotowych plików PDF z Polish Music Sources;
 - kontrolę kompletności pobranych pakietów;
 - osobne profile organizacji plików.
 
@@ -38,16 +39,18 @@ w katalogu utworu, a skany w jego podkatalogu `skany`.
 
 Transkrypcje są zapisywane luzem w osobnych katalogach
 bibliotek. Skany trafiają do niezależnych katalogów bibliotek,
-a każdy pakiet otrzymuje własny folder bez końcówki `.zip`.
+a każdy pakiet otrzymuje własny folder bez końcówki `.zip`
+lub `.pdf`.
 
 Program rozpoznaje również starsze foldery pakietów, których
 nazwy kończą się na `.zip`, i nie zmienia ich automatycznie.
 
 ### Andrzej Kubiczek
 
-Profil jest przygotowany w konfiguracji. Szczegółowa obsługa
-jego układu katalogów zostanie dodana po ustaleniu pełnego
-przebiegu pracy.
+Transkrypcje i skany trafiają do katalogu `<rok>/in progress`
+wewnątrz wybranego folderu nadrzędnego. Pliki są rozdzielane
+między katalogi `diplomatic`, `modern` i `XML`. Transkrypcje
+są zapisywane luzem, a pakiety skanów otrzymują własne foldery.
 
 ## Uruchomienie wersji rozwojowej
 

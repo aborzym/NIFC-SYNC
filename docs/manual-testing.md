@@ -8,6 +8,8 @@
 - [x] Zamontowanie wybranego udziału.
 - [x] Automatyczne odnalezienie udziału w `/run/user/<uid>/gvfs`.
 - [x] Otwarcie wyboru katalogu bezpośrednio wewnątrz zamontowanego udziału.
+- [x] Wykrycie brakującego montowania przy próbie połączenia z NIFC.
+- [x] Ponowne zamontowanie udziału SMB i automatyczne kontynuowanie połączenia.
 - [x] Odmontowanie wyłącznie testowego udziału GIO.
 - [x] Usunięcie hardkodowanego `~/mac_transkrypcje` z `nifc_sync.py`.
 - [x] Pobieranie katalogu terminalowego z aktywnej konfiguracji konta.
@@ -30,6 +32,12 @@
 - [ ] Pobranie skanów do folderu pakietu bez końcówki `.zip`.
 - [ ] Rozpoznanie istniejącego starego folderu pakietu z końcówką `.zip`.
 - [ ] Ponowne pobranie i naprawa pakietu z uszkodzonym manifestem.
+- [x] Wyszukanie w Polish Music Sources skanów spod nieaktualnego adresu.
+- [x] Dopasowanie źródła po siglum i sygnaturze przy innym identyfikatorze RISM.
+- [x] Uzupełnienie brakującego siglum na podstawie nazwy transkrypcji.
+- [x] Pobranie gotowego PDF z Polish Music Sources zamiast osobnych plików JPEG.
+- [x] Zapis PDF w folderze `skany` wraz z manifestem.
+- [x] Wyświetlenie tytułu, formatu i rzeczywistego rozmiaru znalezionego PDF.
 - [ ] Dodanie drugiego konta i usunięcie go z listy kont.
 - [ ] Przełączenie na pozostałe konto po usunięciu aktywnego.
 - [x] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
