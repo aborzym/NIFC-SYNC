@@ -23,7 +23,7 @@
 - [x] Synchronizacja GUI z katalogiem zamontowanym przez GIO.
 - [x] Porównanie szybkiego i dokładnego sprawdzania skanów przez SMB.
 - [x] Rzeczywisty test terminala z aktywnym kontem i katalogiem lokalnym.
-- [ ] Rzeczywisty test terminala z katalogiem zamontowanym przez GIO.
+- [x] Rzeczywisty test terminala z katalogiem zamontowanym przez GIO.
 
 ## Do wykonania przed wydaniem
 
@@ -38,17 +38,18 @@
 - [x] Pobranie gotowego PDF z Polish Music Sources zamiast osobnych plików JPEG.
 - [x] Zapis PDF w folderze `skany` wraz z manifestem.
 - [x] Wyświetlenie tytułu, formatu i rzeczywistego rozmiaru znalezionego PDF.
-- [ ] Dodanie drugiego konta i usunięcie go z listy kont.
-- [ ] Przełączenie na pozostałe konto po usunięciu aktywnego.
+- [x] Dodanie drugiego konta i usunięcie go z listy kont.
+- [x] Przełączenie na pozostałe konto po usunięciu aktywnego.
 - [x] Zablokowanie utworzenia dwóch kont o tej samej nazwie.
 - [x] Zablokowanie zapisu konta bez własnej nazwy.
 - [x] Natychmiastowe zablokowanie loginu NIFC używanego przez inne konto, przed próbą połączenia z NIFC.
 - [x] Powrót selektora do aktywnego konta po anulowaniu dodawania.
-- [ ] Sprawdzenie, że konflikt loginu nie nadpisuje hasła w keyringu.
-- [ ] Usunięcie poprzedniego hasła z keyringu po zmianie loginu NIFC.
-- [ ] Wyświetlenie ostrzeżenia, gdy nie można usunąć poprzedniego hasła.
-- [ ] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
-- [ ] Zachowanie hasła dla starszej konfiguracji, gdy login jest współdzielony przez inne konto.
+- [x] Sprawdzenie, że konflikt loginu nie nadpisuje hasła w keyringu.
+- [x] Usunięcie poprzedniego hasła z keyringu po zmianie loginu NIFC.
+- [x] Wyświetlenie ostrzeżenia, gdy nie można usunąć poprzedniego hasła.
+- [x] Usunięcie hasła z keyringu, gdy login nie jest używany przez inne konto.
+- [x] Ukrycie opcji usunięcia, gdy istnieje tylko jedno konto.
+- [x] Zachowanie hasła dla starszej konfiguracji, gdy login jest współdzielony przez inne konto.
 - [x] Wyświetlenie folderu docelowego w oknie wyboru skanów.
 - [x] Dopasowanie wszystkich kolumn do szerokości okna bez poziomego przewijania.
 - [x] Ręczna zmiana szerokości kolumn bez wypychania pozostałych poza tabelę.
