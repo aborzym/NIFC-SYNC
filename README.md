@@ -5,16 +5,14 @@ oraz pobierania skanów źródłowych.
 
 ## Wersja stabilna
 
-Aktualna stabilna wersja `3.0.0` udostępnia graficzny
-interfejs programu na Linuksie. Wcześniejsza wersja
-terminalowa pozostaje dostępna jako wydanie `2.0.0`.
+Aktualna stabilna wersja `4.0.0` udostępnia uniwersalny
+interfejs graficzny, obsługę wielu kont oraz różne sposoby
+organizowania transkrypcji i skanów. Wcześniejsze wydania
+`3.0.0` i terminalowe `2.0.0` pozostają dostępne.
 
-## Rozwój wersji 4.0
+## Funkcje wersji 4.0
 
-Wersja 4.0 jest rozwijana jako uniwersalna aplikacja
-obsługująca wiele kont i różne sposoby organizowania plików.
-
-Obecnie obsługuje:
+Wersja 4.0 obsługuje:
 
 - konta użytkowników z osobnymi ustawieniami;
 - dane logowania przechowywane w systemowym magazynie haseł;
@@ -45,6 +43,10 @@ lub `.pdf`.
 Program rozpoznaje również starsze foldery pakietów, których
 nazwy kończą się na `.zip`, i nie zmienia ich automatycznie.
 
+Pliki z nierozpoznanych lub nieskonfigurowanych bibliotek
+trafiają do katalogów `INNE.krn` oraz `INNE.źródła`, dzięki
+czemu żaden materiał nie zostaje pominięty.
+
 ### Andrzej Kubiczek
 
 Transkrypcje i skany trafiają do katalogu `<rok>/in progress`
@@ -52,7 +54,7 @@ wewnątrz wybranego folderu nadrzędnego. Pliki są rozdzielane
 między katalogi `diplomatic`, `modern` i `XML`. Transkrypcje
 są zapisywane luzem, a pakiety skanów otrzymują własne foldery.
 
-## Uruchomienie wersji rozwojowej
+## Uruchomienie ze źródeł
 
 Wymagany jest Python 3.12 lub nowszy.
 
