@@ -22,16 +22,16 @@
 - [x] Wczytanie aktywnego konta i ustawień przez zainstalowaną aplikację.
 - [x] Synchronizacja GUI z katalogiem zamontowanym przez GIO.
 - [x] Porównanie szybkiego i dokładnego sprawdzania skanów przez SMB.
-- [ ] Rzeczywisty test terminala z aktywnym kontem i katalogiem lokalnym.
+- [x] Rzeczywisty test terminala z aktywnym kontem i katalogiem lokalnym.
 - [ ] Rzeczywisty test terminala z katalogiem zamontowanym przez GIO.
 
 ## Do wykonania przed wydaniem
 
-- [ ] Pełna synchronizacja profilu Marta Lawrence do katalogów lokalnych.
-- [ ] Zapis transkrypcji luzem we właściwych folderach bibliotek.
-- [ ] Pobranie skanów do folderu pakietu bez końcówki `.zip`.
-- [ ] Rozpoznanie istniejącego starego folderu pakietu z końcówką `.zip`.
-- [ ] Ponowne pobranie i naprawa pakietu z uszkodzonym manifestem.
+- [x] Pełna synchronizacja profilu Marta Lawrence do katalogów lokalnych.
+- [x] Zapis transkrypcji luzem we właściwych folderach bibliotek.
+- [x] Pobranie skanów do folderu pakietu bez końcówki `.zip`.
+- [x] Rozpoznanie istniejącego starego folderu pakietu z końcówką `.zip`.
+- [x] Ponowne pobranie i naprawa pakietu z uszkodzonym manifestem.
 - [x] Wyszukanie w Polish Music Sources skanów spod nieaktualnego adresu.
 - [x] Dopasowanie źródła po siglum i sygnaturze przy innym identyfikatorze RISM.
 - [x] Uzupełnienie brakującego siglum na podstawie nazwy transkrypcji.
