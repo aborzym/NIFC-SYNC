@@ -1,7 +1,7 @@
+import base64
 from pathlib import Path
 
 import requests
-
 
 BASE_URL = "http://transkrypcje.nifc.pl"
 
@@ -41,5 +41,24 @@ class NifcClient:
     def get_files(self):
         return self.session.get(
             f"{self.base_url}/api/files",
+            timeout=self.timeout,
+        )
+
+    def submit_file(
+        self,
+        workflow_key,
+        filename,
+        content,
+    ):
+        if not isinstance(content, bytes):
+            raise TypeError("Zawartość pliku musi być typu bytes.")
+
+        encoded_content = base64.b64encode(content).decode("ascii")
+
+        return self.session.post(
+            (f"{self.base_url}/api/files/content/{workflow_key}/{filename}"),
+            json={
+                "content": encoded_content,
+            },
             timeout=self.timeout,
         )
