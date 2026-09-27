@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from core.configuration import AppConfiguration
 from core.submission import (
+    find_configured_submission_files,
     find_submission_files,
     inspect_submission_file,
 )
@@ -136,6 +138,49 @@ class SubmissionInspectionTest(unittest.TestCase):
         )
 
         self.assertEqual(results, ())
+
+    def test_finds_file_in_configured_transcription_root(self):
+        expected_name = "pl-sa--227_msza.krn"
+        project_folder = self.base_dir / "001 - D - pl-sa--227_msza"
+        project_folder.mkdir()
+        expected_path = project_folder / expected_name
+        expected_path.write_text(
+            "**kern\n*-\n",
+            encoding="utf-8",
+        )
+        configuration = AppConfiguration(
+            destination=self.base_dir,
+            naming_profile="andrzej-borzym",
+        )
+
+        result = find_configured_submission_files(
+            configuration,
+            "KRN-diplomatic",
+            expected_name,
+        )
+
+        self.assertEqual(
+            result.search_root,
+            self.base_dir,
+        )
+        self.assertEqual(
+            result.matches,
+            (expected_path,),
+        )
+
+    def test_returns_empty_search_without_destination(self):
+        configuration = AppConfiguration(
+            naming_profile="andrzej-borzym",
+        )
+
+        result = find_configured_submission_files(
+            configuration,
+            "XML",
+            "utwor.musicxml",
+        )
+
+        self.assertIsNone(result.search_root)
+        self.assertEqual(result.matches, ())
 
 
 if __name__ == "__main__":

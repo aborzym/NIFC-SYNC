@@ -2,12 +2,20 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.destinations import resolve_asset_root
+
 
 @dataclass(frozen=True)
 class SubmissionInspection:
     actual_filename: str
     segment_name: str | None
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ConfiguredSubmissionSearch:
+    search_root: Path | None
+    matches: tuple[Path, ...]
 
 
 def inspect_submission_file(
@@ -106,4 +114,35 @@ def find_submission_files(
             matches,
             key=lambda path: str(path).casefold(),
         )
+    )
+
+
+def find_configured_submission_files(
+    configuration,
+    workflow_name,
+    expected_filename,
+    year=None,
+):
+    search_root = resolve_asset_root(
+        configuration,
+        expected_filename,
+        "transcriptions",
+        workflow_name=workflow_name,
+        year=year,
+    )
+
+    if search_root is None:
+        return ConfiguredSubmissionSearch(
+            search_root=None,
+            matches=(),
+        )
+
+    search_root = Path(search_root)
+
+    return ConfiguredSubmissionSearch(
+        search_root=search_root,
+        matches=find_submission_files(
+            search_root,
+            expected_filename,
+        ),
     )
