@@ -370,3 +370,58 @@ class PolishMusicSourcesLookupWorker(QObject):
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
+
+
+class SubmissionWorker(QObject):
+    submitted = Signal()
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, credentials, workflow_key, filename, file_path):
+        super().__init__()
+        self.credentials = credentials
+        self.workflow_key = workflow_key
+        self.filename = filename
+        self.file_path = file_path
+
+    @Slot()
+    def run(self):
+        try:
+            client = NifcClient()
+            login_response = client.login(
+                self.credentials.username,
+                self.credentials.password,
+            )
+            if not login_response.ok:
+                raise RuntimeError(
+                    f"Błąd logowania do NIFC (HTTP {login_response.status_code})."
+                )
+
+            content = self.file_path.read_bytes()
+            response = client.submit_file(
+                self.workflow_key,
+                self.filename,
+                content,
+            )
+
+            if not response.ok:
+                message = None
+                try:
+                    error = response.json()
+                    if isinstance(error, dict):
+                        message = error.get("message")
+                        if isinstance(error.get("error"), dict):
+                            message = error["error"].get("message") or message
+                except ValueError:
+                    pass
+
+                raise RuntimeError(
+                    message or f"NIFC odrzucił plik (HTTP {response.status_code})."
+                )
+
+            self.submitted.emit()
+
+        except (OSError, requests.RequestException, RuntimeError) as error:
+            self.failed.emit(str(error))
+        finally:
+            self.finished.emit()
