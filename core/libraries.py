@@ -11,6 +11,7 @@ LIBRARY_DISPLAY_NAMES = {
     "pl-sa": "Sandomierz",
     "pl-cz": "Częstochowa",
     "pl-kk": "Kraków",
+    "pl-wn": "Biblioteka Narodowa",
 }
 
 

@@ -4,6 +4,7 @@ import unittest
 from core.scans import (
     ScanSourceMetadata,
     extract_scan_source_metadata,
+    normalize_scan_url,
 )
 
 
@@ -54,6 +55,16 @@ class ExtractScanSourceMetadataTests(unittest.TestCase):
         self.assertEqual(
             result.shelfmark,
             "Kk.I.3",
+        )
+
+
+class NormalizeScanUrlTests(unittest.TestCase):
+    def test_polona_pages_identify_the_same_scan_source(self):
+        base = "https://polona.pl/item-view/7b369fcb-3d2d-4fe7-920a-c05f46eb8643"
+
+        self.assertEqual(
+            normalize_scan_url(base + "?page=4"),
+            normalize_scan_url(base + "?page=59"),
         )
 
 

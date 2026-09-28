@@ -399,7 +399,9 @@ def download_and_extract(
             staging_folder,
             ignore_errors=True,
         )
-
+        source_id = getattr(info, "manuscript_id", None) or getattr(
+            info, "object_id", "nieznany"
+        )
         report_lines = [
             "NIFC-SYNC — raport problemu",
             "",
@@ -408,7 +410,7 @@ def download_and_extract(
             (f"Data: {datetime.now().astimezone().isoformat(timespec='seconds')}"),
             f"Źródło: {info.url}",
             f"PDF: {info.pdf_url}",
-            f"ID rękopisu: {info.manuscript_id}",
+            f"ID źródła: {source_id}",
             f"Tytuł: {info.title}",
             f"Pobrano bajtów: {downloaded_size}",
             "",

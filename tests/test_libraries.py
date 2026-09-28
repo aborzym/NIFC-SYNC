@@ -74,6 +74,7 @@ class LibrariesTest(unittest.TestCase):
                 ("pl-sa", "Sandomierz"),
                 ("pl-cz", "Częstochowa"),
                 ("pl-kk", "Kraków"),
+                ("pl-wn", "Biblioteka Narodowa"),
             ),
         )
 
