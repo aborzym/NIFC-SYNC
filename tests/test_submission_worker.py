@@ -18,6 +18,7 @@ class SubmissionWorkerTest(unittest.TestCase):
             client.submit_file.return_value = SimpleNamespace(
                 ok=False,
                 status_code=406,
+                text='{"error":{"message":"Niepoprawny plik Humdrum."}}',
                 json=lambda: {"error": {"message": "Niepoprawny plik Humdrum."}},
             )
 
@@ -44,6 +45,7 @@ class SubmissionWorkerTest(unittest.TestCase):
                 "workflow-key",
                 "utwor.krn",
                 b"!!!!SEGMENT: utwor.krn\n",
+                progress_callback=worker._upload_progress,
             )
 
     def test_reports_success_after_accepted_post(self):
@@ -53,8 +55,11 @@ class SubmissionWorkerTest(unittest.TestCase):
 
             client = Mock()
             client.login.return_value = SimpleNamespace(ok=True)
-            client.submit_file.return_value = SimpleNamespace(ok=True)
-
+            client.submit_file.return_value = SimpleNamespace(
+                ok=True,
+                status_code=200,
+                text="Plik przyjęty.",
+            )
             worker = SubmissionWorker(
                 credentials=SimpleNamespace(
                     username="test",
@@ -78,6 +83,7 @@ class SubmissionWorkerTest(unittest.TestCase):
                 "workflow-key",
                 "utwor.krn",
                 b"**kern\n*-\n",
+                progress_callback=worker._upload_progress,
             )
 
 

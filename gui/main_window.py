@@ -721,9 +721,13 @@ class MainWindow(QMainWindow):
             return
 
         self.submission_succeeded = False
+        self.submission_response = ""
         self._set_controls_enabled(False)
         self.log_view.append(f"Wysyłanie do NIFC: {api_file['name']}")
         self.statusBar().showMessage("Wysyłanie pliku…")
+        self.progress_bar.setRange(0, 0)
+        self.progress_stage_label.setText("Logowanie do NIFC…")
+        self._start_activity_indicator()
 
         self.submission_thread = QThread(self)
         self.submission_worker = SubmissionWorker(
@@ -735,6 +739,9 @@ class MainWindow(QMainWindow):
         self.submission_worker.moveToThread(self.submission_thread)
 
         self.submission_thread.started.connect(self.submission_worker.run)
+        self.submission_worker.progress.connect(self._submission_progress)
+        self.submission_worker.stage.connect(self._submission_stage)
+        self.submission_worker.validation.connect(self._submission_validation)
         self.submission_worker.submitted.connect(self._submission_completed)
         self.submission_worker.failed.connect(self._submission_failed)
         self.submission_worker.finished.connect(self.submission_thread.quit)
@@ -743,17 +750,56 @@ class MainWindow(QMainWindow):
         self.submission_thread.finished.connect(self._submission_thread_finished)
         self.submission_thread.start()
 
+    def _submission_progress(self, percentage):
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(percentage)
+        self.progress_stage_label.setText(f"Wysyłanie pliku… {percentage}%")
+
+    def _submission_stage(self, message):
+        self.progress_stage_label.setText(message)
+        self.statusBar().showMessage(message)
+        if message != "Wysyłanie pliku…":
+            self.progress_bar.setRange(0, 0)
+
+    def _submission_validation(self, message):
+        self.submission_response = message
+        self.log_view.insertPlainText(f"\nOdpowiedź NIFC:\n{message}\n")
+
     def _submission_completed(self):
         self.submission_succeeded = True
         self.log_view.append("NIFC potwierdził przyjęcie pliku.")
         self.statusBar().showMessage("Plik wysłany")
 
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setWindowTitle("Plik przyjęty przez NIFC")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(self.submission_response or "Plik został przyjęty przez NIFC.")
+        close_button = dialog.addButton(
+            "Zamknij",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.setDefaultButton(close_button)
+        dialog.exec()
+
     def _submission_failed(self, message):
         self.log_view.append(f"BŁĄD WYSYŁKI: {message}")
         self.statusBar().showMessage("Błąd wysyłki")
-        QMessageBox.warning(self, "NIFC odrzucił plik", message)
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("Błąd wysyłki do NIFC")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(message)
+        if self.submission_response:
+            dialog.setDetailedText(self.submission_response)
+        dialog.exec()
 
     def _submission_thread_finished(self):
+        self._stop_activity_indicator()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100 if self.submission_succeeded else 0)
+        self.progress_stage_label.clear()
         self.submission_thread = None
         self.submission_worker = None
         self._set_controls_enabled(True)

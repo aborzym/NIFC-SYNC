@@ -1,4 +1,5 @@
 import base64
+from io import BytesIO
 from pathlib import Path
 
 import requests
@@ -15,6 +16,19 @@ def load_credentials(credentials_file):
             credentials[key] = value
 
     return credentials
+
+
+class SubmissionBody(BytesIO):
+    def __init__(self, payload, progress_callback):
+        super().__init__(payload)
+        self.total_size = len(payload)
+        self.progress_callback = progress_callback
+
+    def read(self, size=-1):
+        chunk = super().read(size)
+        if chunk:
+            self.progress_callback(self.tell(), self.total_size)
+        return chunk
 
 
 class NifcClient:
@@ -49,16 +63,26 @@ class NifcClient:
         workflow_key,
         filename,
         content,
+        progress_callback=None,
     ):
         if not isinstance(content, bytes):
             raise TypeError("Zawartość pliku musi być typu bytes.")
 
-        encoded_content = base64.b64encode(content).decode("ascii")
+        encoded_content = base64.b64encode(content)
+        url = f"{self.base_url}/api/files/content/{workflow_key}/{filename}"
 
-        return self.session.post(
-            (f"{self.base_url}/api/files/content/{workflow_key}/{filename}"),
-            json={
-                "content": encoded_content,
-            },
-            timeout=self.timeout,
-        )
+        if progress_callback is None:
+            return self.session.post(
+                url,
+                json={"content": encoded_content.decode("ascii")},
+                timeout=self.timeout,
+            )
+
+        payload = b'{"content":"' + encoded_content + b'"}'
+        with SubmissionBody(payload, progress_callback) as body:
+            return self.session.post(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                timeout=self.timeout,
+            )
