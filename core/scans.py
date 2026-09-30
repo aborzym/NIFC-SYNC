@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from providers import (
+    nifc_repository,
     polish_music_sources,
     polona,
     sandomierz,
@@ -40,6 +41,7 @@ SCAN_PROVIDERS = (
     sandomierz,
     polish_music_sources,
     polona,
+    nifc_repository,
 )
 
 
