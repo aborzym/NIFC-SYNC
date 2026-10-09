@@ -12,6 +12,42 @@ from core.configuration import (
 
 
 class ConfigurationStoreTest(unittest.TestCase):
+    def test_persists_statistics_month_separately_for_each_account(self):
+        self.store.save(
+            AppConfiguration(
+                nifc_username="andrzej",
+                statistics_start_month="2026-08-01",
+            )
+        )
+        first_id = self.store.active_account_id()
+        second = self.store.create_account(
+            "Marta",
+            AppConfiguration(
+                nifc_username="marta",
+                statistics_start_month="2026-05-01",
+            ),
+        )
+
+        reopened = ConfigurationStore(
+            QSettings(self.settings.fileName(), QSettings.IniFormat)
+        )
+        self.assertEqual(
+            reopened.load().statistics_start_month,
+            "2026-05-01",
+        )
+
+        reopened.set_active_account(first_id)
+        self.assertEqual(
+            reopened.load().statistics_start_month,
+            "2026-08-01",
+        )
+
+        reopened.set_active_account(second.account_id)
+        self.assertEqual(
+            reopened.load().statistics_start_month,
+            "2026-05-01",
+        )
+
     def test_deletes_active_account_and_selects_remaining_one(
         self,
     ):

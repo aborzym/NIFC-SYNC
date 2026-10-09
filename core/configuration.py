@@ -36,6 +36,7 @@ class AppConfiguration:
     nifc_username: str = ""
 
     setup_completed: bool = False
+    statistics_start_month: str = ""
 
     def organization_path(self, key):
         for organization_path in self.organization_paths:
@@ -420,6 +421,16 @@ class ConfigurationStore:
                 )
                 or ""
             ),
+            statistics_start_month=str(
+                self.settings.value(
+                    self._configuration_key(
+                        account_id,
+                        "statistics/start_month",
+                    ),
+                    "",
+                )
+                or ""
+            ),
             setup_completed=self.settings.value(
                 self._configuration_key(
                     account_id,
@@ -447,6 +458,7 @@ class ConfigurationStore:
             "naming/profile": configuration.naming_profile,
             "credentials/username": configuration.nifc_username,
             "setup/completed": configuration.setup_completed,
+            "statistics/start_month": configuration.statistics_start_month,
         }
 
         for key, value in values.items():

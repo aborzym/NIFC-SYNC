@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QThread, QTimer
@@ -40,6 +41,8 @@ from core.scan_manifest import (
     validate_scan_manifest,
 )
 from core.scan_sync import ScanDownloadRequest
+from core.settlement_store import SettlementStore
+from core.settlements import compare_statistics
 from core.submission import (
     find_configured_submission_files,
     inspect_submission_file,
@@ -47,6 +50,7 @@ from core.submission import (
 from gui.first_run_dialog import FirstRunDialog
 from gui.network_dialog import NetworkBrowserDialog
 from gui.scan_dialog import ScanSelectionDialog
+from gui.statistics_dialog import StatisticsDialog
 from gui.submission_dialog import (
     SubmissionPreviewDialog,
     SubmissionSelectionDialog,
@@ -125,6 +129,27 @@ class MainWindow(QMainWindow):
         self.submit_button.clicked.connect(self._open_submission_dialog)
         action_layout.addWidget(self.submit_button)
 
+        self.statistics_button = QPushButton("Rozliczenia…")
+        self.statistics_button.setMinimumHeight(42)
+        self.statistics_button.clicked.connect(self._open_statistics_dialog)
+        action_layout.addWidget(self.statistics_button)
+
+        self.unpaid_summary_label = QLabel("Niewypłacone: —")
+        summary_font = self.unpaid_summary_label.font()
+        summary_font.setPointSize(32)
+        summary_font.setBold(True)
+        self.unpaid_summary_label.setFont(summary_font)
+        self.unpaid_summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.unpaid_summary_label.setStyleSheet(
+            "font-size: 22px; font-weight: 700; color: #73a2ef;"
+        )
+        self.unpaid_summary_label.setWordWrap(True)
+        main_layout.addWidget(self.unpaid_summary_label)
+
+        self.unpaid_updated_label = QLabel("")
+        self.unpaid_updated_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.unpaid_updated_label)
+
         main_layout.addLayout(action_layout)
 
         self.progress_bar = QProgressBar()
@@ -186,7 +211,68 @@ class MainWindow(QMainWindow):
         )
         QTimer.singleShot(2500, self._check_for_updates)
 
+    def _open_statistics_dialog(self):
+        if self._is_busy():
+            return
+
+        dialog = StatisticsDialog(self.configuration_store, self)
+        try:
+            dialog.exec()
+        finally:
+            self._refresh_unpaid_summary()
+            dialog.deleteLater()
+
+    def _refresh_unpaid_summary(self):
+        self.unpaid_summary_label.hide()
+        self.unpaid_updated_label.hide()
+        self.unpaid_summary_label.setText("Niewypłacone: —")
+        self.unpaid_updated_label.setText("Otwórz rozliczenia i odśwież dane.")
+
+        try:
+            configuration = self.configuration_store.load()
+            store = SettlementStore(self.configuration_store)
+            settlements, approved = store.load()
+            snapshot = store.snapshot
+            if snapshot is None:
+                return
+            if snapshot["start_date"] != configuration.statistics_start_month:
+                self.unpaid_updated_label.setText(
+                    "Zmieniono okres — odśwież statystyki w rozliczeniach."
+                )
+                return
+            if not settlements:
+                self.unpaid_updated_label.setText(
+                    "Dodaj PDF-y wypłaconych transz w rozliczeniach."
+                )
+                return
+
+            paid_entries = [
+                item
+                for settlement in settlements.values()
+                for item in settlement["entries"]
+            ]
+            result = compare_statistics(snapshot["entries"], paid_entries, approved)
+            count = f"{result['unpaid_total']:,}".replace(",", " ")
+            refreshed = datetime.fromisoformat(snapshot["refreshed_at"])
+            detail = f"Odświeżono: {refreshed.strftime('%d.%m.%Y, %H:%M')}"
+            if result["unresolved_total"]:
+                pending = f"{result['unresolved_total']:,}".replace(",", " ")
+                detail += f" · Do wyjaśnienia: {pending} znaków"
+
+            self.unpaid_summary_label.setText(f"Niewypłacone: {count} znaków")
+            self.unpaid_updated_label.setText(detail)
+            self.unpaid_summary_label.show()
+            self.unpaid_updated_label.show()
+        except (OSError, ValueError, TypeError, KeyError):
+            self.unpaid_updated_label.setText(
+                "Nie można odczytać rozliczeń. Otwórz okno „Rozliczenia…”."
+            )
+
     def _is_busy(self):
+
+        if self.findChild(StatisticsDialog) is not None:
+            return True
+
         threads = (
             self.catalog_thread,
             self.sync_thread,
@@ -1243,6 +1329,7 @@ class MainWindow(QMainWindow):
         self.connection_button.setEnabled(enabled)
         self.submit_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
+        self.statistics_button.setEnabled(enabled)
 
     def _populate_account_selector(self):
         active_account_id = self.configuration_store.active_account_id()
@@ -1390,6 +1477,8 @@ class MainWindow(QMainWindow):
         self.log_view.append(f"Usunięto konto: {active_account.name}.")
 
     def _apply_configuration(self, configuration):
+
+        self._refresh_unpaid_summary()
 
         if configuration.naming_profile == "marta-lawrence":
             self.destination_group.setTitle("Folder nadrzędny")
