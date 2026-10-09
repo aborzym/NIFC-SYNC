@@ -1,5 +1,5 @@
 Package: nifc-sync
-Version: 4.0.1
+Version: @VERSION@
 Section: sound
 Priority: optional
 Architecture: amd64

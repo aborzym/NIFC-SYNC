@@ -3,7 +3,11 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="4.0.1"
+version="$(
+    "${project_dir}/.venv/bin/python" -c \
+        'import runpy, sys; print(runpy.run_path(sys.argv[1])["__version__"])' \
+        "${project_dir}/core/__init__.py"
+)"
 package_name="nifc-sync_${version}_amd64.deb"
 package_root="${project_dir}/build/linux-package"
 application_dir="${package_root}/opt/nifc-sync"
@@ -39,9 +43,10 @@ install -d \
     "${package_root}/usr/share/icons/hicolor/scalable/apps"
 
 cp -a "${project_dir}/dist/NIFC-SYNC/." "${application_dir}/"
-install -m 644 \
+sed "s/^Version: .*/Version: ${version}/" \
     "${project_dir}/packaging/linux/control" \
-    "${package_root}/DEBIAN/control"
+    > "${package_root}/DEBIAN/control"
+chmod 644 "${package_root}/DEBIAN/control"
 install -m 755 \
     "${project_dir}/packaging/linux/postinst" \
     "${package_root}/DEBIAN/postinst"

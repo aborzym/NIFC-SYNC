@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core import __version__
 from core.configuration import ConfigurationStore
 from core.credentials import (
     CredentialStore,
@@ -50,6 +51,7 @@ from gui.submission_dialog import (
     SubmissionPreviewDialog,
     SubmissionSelectionDialog,
 )
+from gui.updater import UpdateManager
 from gui.workers import (
     CatalogLoader,
     PolishMusicSourcesLookupWorker,
@@ -66,7 +68,7 @@ class MainWindow(QMainWindow):
 
         self.configuration_store = ConfigurationStore()
         self.credential_store = CredentialStore()
-        self.setWindowTitle("NIFC-SYNC 4.0")
+        self.setWindowTitle(f"NIFC-SYNC {__version__}")
         self.setMinimumSize(760, 560)
         self.workflows = {}
         self.catalog_thread = None
@@ -157,7 +159,9 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
-        self.copyright_label = QLabel("© 2026 Andrzej Borzym · NIFC-SYNC 4.0")
+        self.copyright_label = QLabel(
+            f"© 2026 Andrzej Borzym · NIFC-SYNC {__version__}"
+        )
         self.copyright_label.setObjectName("copyrightLabel")
         self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
@@ -165,6 +169,46 @@ class MainWindow(QMainWindow):
         self._restore_settings()
         self._populate_account_selector()
         self.destination_edit.textChanged.connect(self._update_sync_button)
+
+        self.update_manager = UpdateManager(
+            self,
+            settings=QSettings(),
+            current_version=__version__,
+        )
+        self.update_button = QPushButton("Sprawdź aktualizacje…")
+        self.update_button.setObjectName("smallButton")
+        self.update_button.clicked.connect(
+            lambda: self._check_for_updates(show_current_message=True)
+        )
+        main_layout.addWidget(
+            self.update_button,
+            alignment=Qt.AlignmentFlag.AlignRight,
+        )
+        QTimer.singleShot(2500, self._check_for_updates)
+
+    def _is_busy(self):
+        threads = (
+            self.catalog_thread,
+            self.sync_thread,
+            self.scan_thread,
+            self.submission_thread,
+            self.lookup_thread,
+        )
+        return any(thread is not None and thread.isRunning() for thread in threads)
+
+    def _check_for_updates(self, *, show_current_message=False):
+        if self._is_busy():
+            if show_current_message:
+                QMessageBox.information(
+                    self,
+                    "NIFC-SYNC pracuje",
+                    "Sprawdź aktualizacje po zakończeniu bieżącej operacji.",
+                )
+            else:
+                QTimer.singleShot(15000, self._check_for_updates)
+            return
+
+        self.update_manager.check_for_updates(show_current_message=show_current_message)
 
     def _create_header(self):
         layout = QHBoxLayout()
@@ -1397,12 +1441,11 @@ class MainWindow(QMainWindow):
         self.configuration_store.save(configuration)
 
     def closeEvent(self, event):
-        threads = (
-            self.catalog_thread,
-            self.sync_thread,
-            self.scan_thread,
+        is_busy = (
+            self._is_busy()
+            or self.update_manager.download_reply is not None
+            or self.update_manager.install_process is not None
         )
-        is_busy = any(thread is not None and thread.isRunning() for thread in threads)
 
         if is_busy:
             QMessageBox.warning(
