@@ -58,6 +58,16 @@ class NifcClient:
             timeout=self.timeout,
         )
 
+    def get_statistics(self, month):
+        return self.session.get(
+            f"{self.base_url}/api/files/statistics",
+            params={
+                "month": month,
+                "all": "false",
+            },
+            timeout=self.timeout,
+        )
+
     def submit_file(
         self,
         workflow_key,

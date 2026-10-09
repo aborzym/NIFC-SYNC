@@ -457,3 +457,65 @@ class SubmissionWorker(QObject):
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
+
+
+class StatisticsWorker(QObject):
+    log = Signal(str)
+    loaded = Signal(object)
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, credentials, months):
+        super().__init__()
+        self.credentials = credentials
+        self.months = tuple(dict.fromkeys(months))
+
+    @Slot()
+    def run(self):
+        client = None
+        try:
+            if not self.months:
+                raise ValueError("Nie wybrano okresu statystyk.")
+
+            client = NifcClient()
+            response = client.login(
+                self.credentials.username,
+                self.credentials.password,
+            )
+            if not response.ok:
+                raise RuntimeError(
+                    f"Błąd logowania do NIFC (HTTP {response.status_code})."
+                )
+
+            results = {}
+            for month in self.months:
+                self.log.emit(f"Pobieranie statystyk: {month[:7]}…")
+                response = client.get_statistics(month)
+                if not response.ok:
+                    raise RuntimeError(
+                        f"Nie udało się pobrać statystyk za {month[:7]} "
+                        f"(HTTP {response.status_code})."
+                    )
+
+                data = response.json()
+                if not isinstance(data, list):
+                    raise TypeError(
+                        f"Nieprawidłowa odpowiedź statystyk za {month[:7]}."
+                    )
+                results[month] = data
+
+            self.loaded.emit(results)
+        except (
+            OSError,
+            TypeError,
+            ValueError,
+            requests.RequestException,
+            RuntimeError,
+        ) as error:
+            self.failed.emit(str(error))
+        finally:
+            try:
+                if client is not None:
+                    client.session.close()
+            finally:
+                self.finished.emit()
