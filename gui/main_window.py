@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core import __version__
 from core.configuration import ConfigurationStore
 from core.credentials import (
     CredentialStore,
@@ -29,6 +31,7 @@ from core.credentials import (
 from core.destinations import (
     scan_package_folder_name,
 )
+from core.filesystem import format_file_size
 from core.network import (
     find_mounted_smb_path,
     format_smb_location,
@@ -37,13 +40,23 @@ from core.scan_manifest import (
     validate_scan_manifest,
 )
 from core.scan_sync import ScanDownloadRequest
+from core.submission import (
+    find_configured_submission_files,
+    inspect_submission_file,
+)
 from gui.first_run_dialog import FirstRunDialog
 from gui.network_dialog import NetworkBrowserDialog
 from gui.scan_dialog import ScanSelectionDialog
+from gui.submission_dialog import (
+    SubmissionPreviewDialog,
+    SubmissionSelectionDialog,
+)
+from gui.updater import UpdateManager
 from gui.workers import (
     CatalogLoader,
     PolishMusicSourcesLookupWorker,
     ScanDownloadWorker,
+    SubmissionWorker,
     SyncWorker,
 )
 from providers import polish_music_sources
@@ -55,13 +68,16 @@ class MainWindow(QMainWindow):
 
         self.configuration_store = ConfigurationStore()
         self.credential_store = CredentialStore()
-        self.setWindowTitle("NIFC-SYNC 4.0")
+        self.setWindowTitle(f"NIFC-SYNC {__version__}")
         self.setMinimumSize(760, 560)
         self.workflows = {}
         self.catalog_thread = None
         self.catalog_worker = None
         self.sync_thread = None
         self.sync_worker = None
+        self.submission_thread = None
+        self.submission_worker = None
+        self.submission_succeeded = False
         self.scan_thread = None
         self.scan_worker = None
         self.lookup_thread = None
@@ -99,7 +115,17 @@ class MainWindow(QMainWindow):
         self.sync_button.setEnabled(False)
         self.sync_button.setMinimumHeight(42)
         self.sync_button.clicked.connect(self._start_synchronization)
-        main_layout.addWidget(self.sync_button)
+
+        action_layout = QHBoxLayout()
+        action_layout.addWidget(self.sync_button, stretch=1)
+
+        self.submit_button = QPushButton("Wyślij plik")
+        self.submit_button.setMinimumHeight(42)
+        self.submit_button.setEnabled(False)
+        self.submit_button.clicked.connect(self._open_submission_dialog)
+        action_layout.addWidget(self.submit_button)
+
+        main_layout.addLayout(action_layout)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -133,7 +159,9 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_view, stretch=1)
 
         self.setCentralWidget(central_widget)
-        self.copyright_label = QLabel("© 2026 Andrzej Borzym · NIFC-SYNC 4.0")
+        self.copyright_label = QLabel(
+            f"© 2026 Andrzej Borzym · NIFC-SYNC {__version__}"
+        )
         self.copyright_label.setObjectName("copyrightLabel")
         self.statusBar().addPermanentWidget(self.copyright_label)
         self.statusBar().showMessage("Gotowy")
@@ -141,6 +169,46 @@ class MainWindow(QMainWindow):
         self._restore_settings()
         self._populate_account_selector()
         self.destination_edit.textChanged.connect(self._update_sync_button)
+
+        self.update_manager = UpdateManager(
+            self,
+            settings=QSettings(),
+            current_version=__version__,
+        )
+        self.update_button = QPushButton("Sprawdź aktualizacje…")
+        self.update_button.setObjectName("smallButton")
+        self.update_button.clicked.connect(
+            lambda: self._check_for_updates(show_current_message=True)
+        )
+        main_layout.addWidget(
+            self.update_button,
+            alignment=Qt.AlignmentFlag.AlignRight,
+        )
+        QTimer.singleShot(2500, self._check_for_updates)
+
+    def _is_busy(self):
+        threads = (
+            self.catalog_thread,
+            self.sync_thread,
+            self.scan_thread,
+            self.submission_thread,
+            self.lookup_thread,
+        )
+        return any(thread is not None and thread.isRunning() for thread in threads)
+
+    def _check_for_updates(self, *, show_current_message=False):
+        if self._is_busy():
+            if show_current_message:
+                QMessageBox.information(
+                    self,
+                    "NIFC-SYNC pracuje",
+                    "Sprawdź aktualizacje po zakończeniu bieżącej operacji.",
+                )
+            else:
+                QTimer.singleShot(15000, self._check_for_updates)
+            return
+
+        self.update_manager.check_for_updates(show_current_message=show_current_message)
 
     def _create_header(self):
         layout = QHBoxLayout()
@@ -545,9 +613,14 @@ class MainWindow(QMainWindow):
     def _update_sync_button(self):
         has_catalog = bool(self.workflows)
         has_destination = self.destination_path is not None
-        self.sync_button.setEnabled(
-            has_catalog and has_destination and self.sync_thread is None
+        can_start = (
+            has_catalog
+            and has_destination
+            and self.sync_thread is None
+            and self.submission_thread is None
         )
+        self.sync_button.setEnabled(can_start)
+        self.submit_button.setEnabled(can_start)
 
     def _selected_workflow(self):
         if self.modern_radio.isChecked():
@@ -565,6 +638,219 @@ class MainWindow(QMainWindow):
         if self.xml_radio.isChecked():
             return "XML"
         return "KRN-diplomatic"
+
+    def _open_submission_dialog(self):
+        workflow = self._selected_workflow()
+        if workflow is None:
+            return
+        self.log_view.append(
+            f"Workflow {workflow['name']}: key={workflow.get('key')!r}"
+        )
+
+        dialog = SubmissionSelectionDialog(workflow, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            api_file = dialog.selected_file()
+            configuration = replace(
+                self.configuration_store.load(),
+                destination=self.destination_path,
+                workflow=workflow["name"],
+            )
+            search = find_configured_submission_files(
+                configuration,
+                workflow["name"],
+                api_file["name"],
+            )
+
+            self.log_view.append(
+                f"Tryb na sucho: {api_file['name']} — "
+                f"znaleziono {len(search.matches)} plik(ów)."
+            )
+            self.log_view.append(
+                f"Katalog wyszukiwania: {search.search_root or 'nieustalony'}"
+            )
+            for path in search.matches:
+                self.log_view.append(f"  {path}")
+            matches = search.matches
+            if not matches:
+                selected_path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "Wskaż plik do wysłania",
+                    str(search.search_root or self.destination_path or Path.home()),
+                    "Pliki transkrypcji (*.krn *.xml *.musicxml *.mxl);;Wszystkie pliki (*)",
+                )
+                if not selected_path:
+                    return
+                matches = (Path(selected_path),)
+            if len(matches) > 1:
+                paths = [str(path) for path in matches]
+                selected_path, accepted = QInputDialog.getItem(
+                    self,
+                    "Wybierz lokalny plik",
+                    "Znaleziono kilka plików. Wybierz ścieżkę:",
+                    paths,
+                    0,
+                    False,
+                )
+                if not accepted:
+                    return
+                matches = (Path(selected_path),)
+            if len(matches) == 1:
+                file_path = matches[0]
+                inspection = inspect_submission_file(
+                    workflow["name"],
+                    api_file["name"],
+                    file_path,
+                )
+                self.log_view.append(f"Plik lokalny: {inspection.actual_filename}")
+                self.log_view.append(
+                    f"!!!!SEGMENT: {inspection.segment_name or 'brak'}"
+                )
+                self.log_view.append(
+                    f"Rozmiar: {format_file_size(file_path.stat().st_size)}"
+                )
+                for warning in inspection.warnings:
+                    self.log_view.append(f"OSTRZEŻENIE: {warning}")
+                preview = SubmissionPreviewDialog(
+                    workflow["name"],
+                    api_file["name"],
+                    file_path,
+                    inspection,
+                    self,
+                )
+                preview_result = preview.exec()
+
+                if preview_result == QDialog.DialogCode.Accepted:
+                    content = file_path.read_bytes()
+                    self.log_view.append("PRÓBA WYSYŁKI — bez połączenia z serwerem:")
+                    self.log_view.append(f"  workflow_key: {workflow['key']}")
+                    self.log_view.append(f"  nazwa w NIFC: {api_file['name']}")
+                    self.log_view.append(
+                        f"  odczytano: {format_file_size(len(content))}"
+                    )
+                    self.log_view.append("  POST nie został wykonany.")
+
+                elif preview_result == 2:
+                    confirmation = QMessageBox.question(
+                        self,
+                        "Potwierdź wysłanie do NIFC",
+                        (
+                            f"Czy wysłać plik do NIFC?\n\n"
+                            f"Workflow: {workflow['name']}\n"
+                            f"Nazwa: {api_file['name']}\n"
+                            f"Ścieżka: {file_path}\n\n"
+                            "Po wysłaniu powrót do edycji w NIFC "
+                            "może nie być możliwy."
+                        ),
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if confirmation == QMessageBox.StandardButton.Yes:
+                        self._start_submission(workflow, api_file, file_path)
+
+    def _start_submission(self, workflow, api_file, file_path):
+        configuration = self.configuration_store.load()
+
+        try:
+            credentials = self.credential_store.load(configuration.nifc_username)
+        except CredentialStoreError as error:
+            QMessageBox.warning(self, "Błąd danych logowania", str(error))
+            return
+
+        if credentials is None:
+            QMessageBox.warning(
+                self,
+                "Brak danych logowania",
+                "Nie znaleziono zapisanych danych logowania do NIFC.",
+            )
+            return
+
+        self.submission_succeeded = False
+        self.submission_response = ""
+        self._set_controls_enabled(False)
+        self.log_view.append(f"Wysyłanie do NIFC: {api_file['name']}")
+        self.statusBar().showMessage("Wysyłanie pliku…")
+        self.progress_bar.setRange(0, 0)
+        self.progress_stage_label.setText("Logowanie do NIFC…")
+        self._start_activity_indicator()
+
+        self.submission_thread = QThread(self)
+        self.submission_worker = SubmissionWorker(
+            credentials,
+            workflow["key"],
+            api_file["name"],
+            file_path,
+        )
+        self.submission_worker.moveToThread(self.submission_thread)
+
+        self.submission_thread.started.connect(self.submission_worker.run)
+        self.submission_worker.progress.connect(self._submission_progress)
+        self.submission_worker.stage.connect(self._submission_stage)
+        self.submission_worker.validation.connect(self._submission_validation)
+        self.submission_worker.submitted.connect(self._submission_completed)
+        self.submission_worker.failed.connect(self._submission_failed)
+        self.submission_worker.finished.connect(self.submission_thread.quit)
+        self.submission_worker.finished.connect(self.submission_worker.deleteLater)
+        self.submission_thread.finished.connect(self.submission_thread.deleteLater)
+        self.submission_thread.finished.connect(self._submission_thread_finished)
+        self.submission_thread.start()
+
+    def _submission_progress(self, percentage):
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(percentage)
+        self.progress_stage_label.setText(f"Wysyłanie pliku… {percentage}%")
+
+    def _submission_stage(self, message):
+        self.progress_stage_label.setText(message)
+        self.statusBar().showMessage(message)
+        if message != "Wysyłanie pliku…":
+            self.progress_bar.setRange(0, 0)
+
+    def _submission_validation(self, message):
+        self.submission_response = message
+        self.log_view.insertPlainText(f"\nOdpowiedź NIFC:\n{message}\n")
+
+    def _submission_completed(self):
+        self.submission_succeeded = True
+        self.log_view.append("NIFC potwierdził przyjęcie pliku.")
+        self.statusBar().showMessage("Plik wysłany")
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setWindowTitle("Plik przyjęty przez NIFC")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(self.submission_response or "Plik został przyjęty przez NIFC.")
+        close_button = dialog.addButton(
+            "Zamknij",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.setDefaultButton(close_button)
+        dialog.exec()
+
+    def _submission_failed(self, message):
+        self.log_view.append(f"BŁĄD WYSYŁKI: {message}")
+        self.statusBar().showMessage("Błąd wysyłki")
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("Błąd wysyłki do NIFC")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(message)
+        if self.submission_response:
+            dialog.setDetailedText(self.submission_response)
+        dialog.exec()
+
+    def _submission_thread_finished(self):
+        self._stop_activity_indicator()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100 if self.submission_succeeded else 0)
+        self.progress_stage_label.clear()
+        self.submission_thread = None
+        self.submission_worker = None
+        self._set_controls_enabled(True)
+        self._update_sync_button()
+
+        if self.submission_succeeded:
+            self.load_catalog()
 
     def _start_synchronization(self):
         selected_workflow = self._selected_workflow()
@@ -955,6 +1241,7 @@ class MainWindow(QMainWindow):
         self.browse_button.setEnabled(enabled)
         self.account_combo.setEnabled(enabled)
         self.connection_button.setEnabled(enabled)
+        self.submit_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
 
     def _populate_account_selector(self):
@@ -1154,12 +1441,11 @@ class MainWindow(QMainWindow):
         self.configuration_store.save(configuration)
 
     def closeEvent(self, event):
-        threads = (
-            self.catalog_thread,
-            self.sync_thread,
-            self.scan_thread,
+        is_busy = (
+            self._is_busy()
+            or self.update_manager.download_reply is not None
+            or self.update_manager.install_process is not None
         )
-        is_busy = any(thread is not None and thread.isRunning() for thread in threads)
 
         if is_busy:
             QMessageBox.warning(

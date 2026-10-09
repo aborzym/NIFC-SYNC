@@ -3,7 +3,11 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="4.0.1"
+version="$(
+    "${project_dir}/.venv/bin/python" -c \
+        'import runpy, sys; print(runpy.run_path(sys.argv[1])["__version__"])' \
+        "${project_dir}/core/__init__.py"
+)"
 iconset_dir="${project_dir}/build/NIFC-SYNC.iconset"
 icon_path="${project_dir}/build/NIFC-SYNC.icns"
 application_path="${project_dir}/dist/macos/NIFC-SYNC.app"
@@ -47,6 +51,22 @@ iconutil -c icns "${iconset_dir}" -o "${icon_path}"
     --workpath "${project_dir}/build/macos/pyinstaller" \
     --specpath "${project_dir}/build/macos" \
     "${project_dir}/app.py"
+
+"${project_dir}/.venv/bin/python" - \
+    "${application_path}/Contents/Info.plist" \
+    "${version}" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    data = plistlib.load(file)
+data["CFBundleShortVersionString"] = sys.argv[2]
+data["CFBundleVersion"] = sys.argv[2]
+with path.open("wb") as file:
+    plistlib.dump(data, file)
+PY
 
 codesign --force --deep --sign - "${application_path}"
 

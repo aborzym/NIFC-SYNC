@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from core import __version__
 from core.configuration import ConfigurationStore
 from core.migration import (
     LegacyCredentialError,
@@ -122,6 +123,7 @@ def run_first_setup():
 def main():
     application = QApplication(sys.argv)
     application.setApplicationName("NIFC-SYNC")
+    application.setApplicationVersion(__version__)
     application.setOrganizationName("NIFC-SYNC")
     application.setWindowIcon(
         QIcon(str(Path(__file__).resolve().parent / "assets" / "nifc-sync.svg"))

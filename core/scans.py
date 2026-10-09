@@ -5,7 +5,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from providers import (
+    nifc_repository,
     polish_music_sources,
+    polona,
     sandomierz,
 )
 
@@ -38,6 +40,8 @@ PART_NUMBER_PATTERN = re.compile(r"(?<=-\d{3})-\d{3}$")
 SCAN_PROVIDERS = (
     sandomierz,
     polish_music_sources,
+    polona,
+    nifc_repository,
 )
 
 
@@ -135,9 +139,17 @@ def normalize_scan_url(url):
     parsed = urlsplit(url.strip())
 
     normalized = parsed.netloc.lower() + parsed.path.rstrip("/")
+    query = parsed.query
 
-    if parsed.query:
-        normalized += f"?{parsed.query}"
+    if polona.supports(url):
+        query = "&".join(
+            parameter
+            for parameter in query.split("&")
+            if parameter.partition("=")[0].lower() != "page"
+        )
+
+    if query:
+        normalized += f"?{query}"
 
     return normalized
 
