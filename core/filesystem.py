@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from pathlib import Path
 
 SCORE_EXTENSIONS = {
@@ -18,6 +19,14 @@ TRANSCRIPTION_EXTENSIONS = {
     "KRN-diplomatic": {".krn"},
     "KRN-modern": {".krn"},
 }
+
+
+def format_file_modified(file_path):
+    try:
+        modified = datetime.fromtimestamp(Path(file_path).stat().st_mtime)
+    except (OSError, ValueError, OverflowError):
+        return "nie można odczytać"
+    return modified.strftime("%d.%m.%Y, %H:%M:%S")
 
 
 def find_files_with_extensions(

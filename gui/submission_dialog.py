@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from core.filesystem import format_file_size
+from core.filesystem import format_file_modified, format_file_size
 
 
 class SubmissionSelectionDialog(QDialog):
@@ -88,6 +88,7 @@ class SubmissionPreviewDialog(QDialog):
             ("Workflow", workflow_name),
             ("Nazwa w NIFC", expected_filename),
             ("Plik lokalny", str(file_path)),
+            ("Ostatnia modyfikacja", format_file_modified(file_path)),
         ]
         if workflow_name.startswith("KRN-"):
             details.append(("!!!!SEGMENT:", inspection.segment_name or "brak"))

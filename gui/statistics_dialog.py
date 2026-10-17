@@ -29,9 +29,10 @@ from gui.workers import StatisticsWorker
 
 
 class StatisticsDialog(QDialog):
-    def __init__(self, configuration_store, parent=None):
+    def __init__(self, configuration_store, parent=None, *, credential_store=None):
         super().__init__(parent)
         self.configuration_store = configuration_store
+        self.credential_store = credential_store or CredentialStore()
         self.thread = None
         self.worker = None
         self.entries = ()
@@ -64,6 +65,13 @@ class StatisticsDialog(QDialog):
         )
         self.unpaid_label.setContentsMargins(0, 0, 0, 0)
 
+        self.total_label = QLabel("Łącznie wykonano: —")
+        self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.total_label.setStyleSheet(
+            "font-size: 13px; font-weight: 400; color: #9aaac2;"
+        )
+        self.total_label.setWordWrap(True)
+
         self.refreshed_label = QLabel("Brak zapisanych statystyk.")
         self.refreshed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -85,6 +93,7 @@ class StatisticsDialog(QDialog):
         summary_layout = QVBoxLayout()
         summary_layout.setSpacing(4)
         summary_layout.addWidget(self.unpaid_label)
+        summary_layout.addWidget(self.total_label)
         summary_layout.addWidget(self.refreshed_label)
         period_row.addLayout(summary_layout, stretch=1)
 
@@ -175,6 +184,7 @@ class StatisticsDialog(QDialog):
         self.entries = ()
         self.snapshot = None
         self.unpaid_label.setText("Niewypłacone: —")
+        self.total_label.setText("Łącznie wykonano: —")
         self.refreshed_label.setText("Zmieniono okres — odśwież statystyki.")
         self.report.clear()
         self.status_label.setText(
@@ -189,7 +199,7 @@ class StatisticsDialog(QDialog):
         configuration = self.configuration_store.load()
         try:
             months = statistics_months(configuration.statistics_start_month)
-            credentials = CredentialStore().load(configuration.nifc_username)
+            credentials = self.credential_store.load(configuration.nifc_username)
             if credentials is None:
                 raise ValueError("Brak zapisanych danych logowania do NIFC.")
         except (ValueError, CredentialStoreError) as error:
@@ -308,9 +318,16 @@ class StatisticsDialog(QDialog):
     def _show_reconciliation(self, *, review=True):
         if self.snapshot is None:
             self.unpaid_label.setText("Niewypłacone: —")
+            self.total_label.setText("Łącznie wykonano: —")
             self.report.setPlainText("Pobierz statystyki dla wybranego okresu.")
             return
 
+        total = sum(item["note_count"] for item in self.entries)
+        count_total = f"{total:,}".replace(",", " ")
+        start = datetime.fromisoformat(self.snapshot["start_date"]).strftime("%d.%m.%Y")
+        self.total_label.setText(
+            f"Łącznie wykonano: {count_total} znaków · od {start}"
+        )
         refreshed = datetime.fromisoformat(self.snapshot["refreshed_at"])
         self.refreshed_label.setText(
             f"Odświeżono: {refreshed.strftime('%d.%m.%Y, %H:%M')}"

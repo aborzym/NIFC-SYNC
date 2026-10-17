@@ -71,6 +71,50 @@ class CredentialStoreTest(unittest.TestCase):
         ):
             self.store.load("andrzej")
 
+    def test_repeated_operations_read_keyring_once_per_account(self):
+        self.backend.get_password.return_value = "tajne-haslo"
+        for _ in range(4):
+            self.assertEqual(self.store.load("andrzej"), self.credentials)
+        self.backend.get_password.assert_called_once()
+        self.store.load("other")
+        self.assertEqual(self.backend.get_password.call_count, 2)
+
+    def test_successful_save_updates_session(self):
+        self.store.save(self.credentials)
+        self.assertEqual(self.store.load("andrzej"), self.credentials)
+        updated = NifcCredentials("andrzej", "new-password")
+        self.store.save(updated)
+        self.assertEqual(self.store.load("andrzej"), updated)
+        self.backend.get_password.assert_not_called()
+
+    def test_delete_invalidates_session(self):
+        self.store.save(self.credentials)
+        self.store.delete("andrzej")
+        self.backend.get_password.return_value = None
+        self.assertIsNone(self.store.load("andrzej"))
+        self.backend.get_password.assert_called_once()
+
+    def test_failed_save_does_not_cache_new_or_old_password(self):
+        self.store.save(self.credentials)
+        self.backend.set_password.side_effect = KeyringError()
+        with self.assertRaises(CredentialStoreError):
+            self.store.save(NifcCredentials("andrzej", "new-password"))
+        self.backend.get_password.return_value = "tajne-haslo"
+        self.assertEqual(self.store.load("andrzej"), self.credentials)
+        self.backend.get_password.assert_called_once()
+
+    def test_missing_password_is_not_cached(self):
+        self.backend.get_password.side_effect = [None, "tajne-haslo"]
+        self.assertIsNone(self.store.load("andrzej"))
+        self.assertEqual(self.store.load("andrzej"), self.credentials)
+
+    def test_cache_is_not_shared_between_store_instances(self):
+        self.store.save(self.credentials)
+        backend = Mock()
+        backend.get_password.return_value = None
+        self.assertIsNone(CredentialStore(backend).load("andrzej"))
+        backend.get_password.assert_called_once()
+
     def test_does_not_expose_password_in_representation(self):
         representation = repr(self.credentials)
 

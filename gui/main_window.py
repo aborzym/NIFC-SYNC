@@ -32,7 +32,7 @@ from core.credentials import (
 from core.destinations import (
     scan_package_folder_name,
 )
-from core.filesystem import format_file_size
+from core.filesystem import format_file_modified, format_file_size
 from core.network import (
     find_mounted_smb_path,
     format_smb_location,
@@ -47,6 +47,7 @@ from core.submission import (
     find_configured_submission_files,
     inspect_submission_file,
 )
+from gui.download_dialog import DownloadSelectionDialog
 from gui.first_run_dialog import FirstRunDialog
 from gui.network_dialog import NetworkBrowserDialog
 from gui.scan_dialog import ScanSelectionDialog
@@ -114,14 +115,20 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self._create_workflow_group())
         main_layout.addWidget(self._create_destination_group())
 
-        self.sync_button = QPushButton("Synchronizuj")
+        self.sync_button = QPushButton("Synchronizuj cały workflow")
         self.sync_button.setObjectName("primaryButton")
         self.sync_button.setEnabled(False)
         self.sync_button.setMinimumHeight(42)
-        self.sync_button.clicked.connect(self._start_synchronization)
+        self.sync_button.clicked.connect(lambda: self._start_synchronization())
+
+        self.download_selection_button = QPushButton("Wybierz pliki…")
+        self.download_selection_button.setEnabled(False)
+        self.download_selection_button.setMinimumHeight(42)
+        self.download_selection_button.clicked.connect(self._open_download_dialog)
 
         action_layout = QHBoxLayout()
         action_layout.addWidget(self.sync_button, stretch=1)
+        action_layout.addWidget(self.download_selection_button, stretch=1)
 
         self.submit_button = QPushButton("Wyślij plik")
         self.submit_button.setMinimumHeight(42)
@@ -215,7 +222,9 @@ class MainWindow(QMainWindow):
         if self._is_busy():
             return
 
-        dialog = StatisticsDialog(self.configuration_store, self)
+        dialog = StatisticsDialog(
+            self.configuration_store, self, credential_store=self.credential_store
+        )
         try:
             dialog.exec()
         finally:
@@ -705,6 +714,7 @@ class MainWindow(QMainWindow):
             and self.sync_thread is None
             and self.submission_thread is None
         )
+        self.download_selection_button.setEnabled(can_start)
         self.sync_button.setEnabled(can_start)
         self.submit_button.setEnabled(can_start)
 
@@ -755,7 +765,9 @@ class MainWindow(QMainWindow):
                 f"Katalog wyszukiwania: {search.search_root or 'nieustalony'}"
             )
             for path in search.matches:
-                self.log_view.append(f"  {path}")
+                self.log_view.append(
+                    f"  {path} · modyfikacja: {format_file_modified(path)}"
+                )
             matches = search.matches
             if not matches:
                 selected_path, _ = QFileDialog.getOpenFileName(
@@ -768,7 +780,10 @@ class MainWindow(QMainWindow):
                     return
                 matches = (Path(selected_path),)
             if len(matches) > 1:
-                paths = [str(path) for path in matches]
+                paths = [
+                    f"{path} · modyfikacja: {format_file_modified(path)}"
+                    for path in matches
+                ]
                 selected_path, accepted = QInputDialog.getItem(
                     self,
                     "Wybierz lokalny plik",
@@ -779,7 +794,7 @@ class MainWindow(QMainWindow):
                 )
                 if not accepted:
                     return
-                matches = (Path(selected_path),)
+                matches = (matches[paths.index(selected_path)],)
             if len(matches) == 1:
                 file_path = matches[0]
                 inspection = inspect_submission_file(
@@ -788,6 +803,9 @@ class MainWindow(QMainWindow):
                     file_path,
                 )
                 self.log_view.append(f"Plik lokalny: {inspection.actual_filename}")
+                self.log_view.append(
+                    f"Ostatnia modyfikacja: {format_file_modified(file_path)}"
+                )
                 self.log_view.append(
                     f"!!!!SEGMENT: {inspection.segment_name or 'brak'}"
                 )
@@ -823,7 +841,8 @@ class MainWindow(QMainWindow):
                             f"Czy wysłać plik do NIFC?\n\n"
                             f"Workflow: {workflow['name']}\n"
                             f"Nazwa: {api_file['name']}\n"
-                            f"Ścieżka: {file_path}\n\n"
+                            f"Ścieżka: {file_path}\n"
+                            f"Ostatnia modyfikacja: {format_file_modified(file_path)}\n\n"
                             "Po wysłaniu powrót do edycji w NIFC "
                             "może nie być możliwy."
                         ),
@@ -938,8 +957,26 @@ class MainWindow(QMainWindow):
         if self.submission_succeeded:
             self.load_catalog()
 
-    def _start_synchronization(self):
+    def _open_download_dialog(self):
         selected_workflow = self._selected_workflow()
+        if selected_workflow is None:
+            self._catalog_failed("Nie wybrano rodzaju transkrypcji.")
+            return
+
+        dialog = DownloadSelectionDialog(selected_workflow, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        selected_files = dialog.selected_files()
+        if not selected_files:
+            return
+        self._start_synchronization(
+            selected_workflow={**selected_workflow, "files": selected_files},
+            download_scans=dialog.download_scans(),
+        )
+
+    def _start_synchronization(self, *, selected_workflow=None, download_scans=True):
+        if selected_workflow is None:
+            selected_workflow = self._selected_workflow()
 
         if selected_workflow is None:
             self._catalog_failed("Nie wybrano rodzaju transkrypcji.")
@@ -948,7 +985,7 @@ class MainWindow(QMainWindow):
         configuration = replace(
             self.configuration_store.load(),
             destination=self.destination_path,
-            workflow=self._selected_workflow_name(),
+            workflow=selected_workflow["name"],
         )
 
         self.log_view.clear()
@@ -965,6 +1002,7 @@ class MainWindow(QMainWindow):
             selected_workflow=selected_workflow,
             available_workflows=list(self.workflows.values()),
             configuration=configuration,
+            download_scans=download_scans,
         )
         self.sync_worker.moveToThread(self.sync_thread)
 
@@ -1328,6 +1366,7 @@ class MainWindow(QMainWindow):
         self.account_combo.setEnabled(enabled)
         self.connection_button.setEnabled(enabled)
         self.submit_button.setEnabled(enabled)
+        self.download_selection_button.setEnabled(enabled)
         self.sync_button.setEnabled(enabled)
         self.statistics_button.setEnabled(enabled)
 

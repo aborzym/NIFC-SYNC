@@ -96,11 +96,13 @@ class SyncWorker(QObject):
         selected_workflow,
         available_workflows,
         configuration,
+        download_scans=True,
     ):
         super().__init__()
         self.selected_workflow = selected_workflow
         self.available_workflows = available_workflows
         self.configuration = configuration
+        self.download_scans = download_scans
         self.destination = configuration.destination
 
         if configuration.storage_kind == "mounted" and configuration.network_url:
@@ -171,22 +173,27 @@ class SyncWorker(QObject):
             )
             self.progress.emit(70)
 
-            self.log.emit("Kontrola skanów…")
-            self.progress.emit(75)
-            session = requests.Session()
             scan_issues = []
+            scan_plans = ()
 
-            scan_plans = plan_scans(
-                self.selected_workflow,
-                scan_urls_by_group,
-                scan_sources_by_url,
-                inventory.existing_scans_by_url,
-                transcription_result.target_folders,
-                session,
-                configuration=self.configuration,
-                scan_issues=scan_issues,
-                log=self.log.emit,
-            )
+            if self.download_scans:
+                self.log.emit("Kontrola skanów…")
+                self.progress.emit(75)
+                session = requests.Session()
+                scan_plans = plan_scans(
+                    self.selected_workflow,
+                    scan_urls_by_group,
+                    scan_sources_by_url,
+                    inventory.existing_scans_by_url,
+                    transcription_result.target_folders,
+                    session,
+                    configuration=self.configuration,
+                    scan_issues=scan_issues,
+                    log=self.log.emit,
+                )
+            else:
+                self.log.emit("Pominięto pobieranie skanów.")
+
             self.progress.emit(80)
 
             self.completed.emit(
