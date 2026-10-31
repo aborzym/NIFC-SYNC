@@ -1,4 +1,5 @@
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
@@ -120,12 +121,57 @@ class FirstRunDialog(QDialog):
         organization_group = self._create_organization_group()
         storage_group = self._create_storage_group()
 
+        self.numbering_group = QGroupBox("Wspólna numeracja między komputerami")
+        self.numbering_group.setCheckable(True)
+        self.numbering_group.setChecked(False)
+        numbering_layout = QVBoxLayout(self.numbering_group)
+
+        self.numbering_role_combo = QComboBox()
+        self.numbering_role_combo.addItem(
+            "Komputer roboczy — nowe foldery tymczasowe", "replica"
+        )
+        self.numbering_role_combo.addItem(
+            "Katalog główny — przydzielanie numerów", "master"
+        )
+        numbering_layout.addWidget(self.numbering_role_combo)
+
+        self.numbering_directory_edit = QLineEdit()
+        self.numbering_directory_edit.setPlaceholderText(
+            "Folder wspólnej listy, np. Dropbox/NIFC-SYNC"
+        )
+        numbering_directory_row = QHBoxLayout()
+        numbering_directory_row.addWidget(self.numbering_directory_edit)
+        numbering_browse_button = QPushButton("Wybierz…")
+        numbering_browse_button.clicked.connect(self._choose_numbering_directory)
+        numbering_directory_row.addWidget(numbering_browse_button)
+        numbering_layout.addLayout(numbering_directory_row)
+
+        if not self.new_account:
+            configuration = self.configuration_store.load()
+            self.numbering_group.setChecked(bool(configuration.folder_index_role))
+            role_index = self.numbering_role_combo.findData(
+                configuration.folder_index_role
+            )
+            if role_index >= 0:
+                self.numbering_role_combo.setCurrentIndex(role_index)
+            self.numbering_directory_edit.setText(configuration.folder_index_directory)
+
+        self.organization_profile_combo.currentIndexChanged.connect(
+            lambda: self.numbering_group.setVisible(
+                self.organization_profile_combo.currentData() == "andrzej-borzym"
+            )
+        )
+        self.numbering_group.setVisible(
+            self.organization_profile_combo.currentData() == "andrzej-borzym"
+        )
+
         layout.addStretch(1)
         layout.addWidget(account_group)
         layout.addStretch(1)
         layout.addWidget(organization_group)
         layout.addStretch(1)
         layout.addWidget(storage_group)
+        layout.addWidget(self.numbering_group)
         layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
@@ -147,6 +193,16 @@ class FirstRunDialog(QDialog):
         layout.addWidget(buttons)
         if not self.new_account:
             self._restore_values(suggested_credentials)
+
+    def _choose_numbering_directory(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Wybierz folder wspólnej listy",
+            self.numbering_directory_edit.text().strip()
+            or str(Path.home() / "Dropbox"),
+        )
+        if folder:
+            self.numbering_directory_edit.setText(folder)
 
     def _create_account_group(self):
         group = QGroupBox("Konto NIFC")
@@ -579,6 +635,23 @@ class FirstRunDialog(QDialog):
             if (value := edit.text().strip())
         )
 
+        numbering_enabled = (
+            self.organization_profile_combo.currentData() == "andrzej-borzym"
+            and self.numbering_group.isChecked()
+        )
+        numbering_directory = self.numbering_directory_edit.text().strip()
+
+        if numbering_enabled and (
+            not numbering_directory
+            or not Path(numbering_directory).expanduser().is_dir()
+        ):
+            QMessageBox.warning(
+                self,
+                "Numeracja folderów",
+                "Podaj istniejący folder wspólnej listy.",
+            )
+            return
+
         request = SetupRequest(
             destination=self.destination_path,
             storage_kind=self._selected_storage_kind(),
@@ -621,6 +694,18 @@ class FirstRunDialog(QDialog):
                 self.credential_store,
                 create_new_account=self.new_account,
             )
+            self.completed_configuration = replace(
+                self.completed_configuration,
+                folder_index_role=(
+                    self.numbering_role_combo.currentData() if numbering_enabled else ""
+                ),
+                folder_index_directory=(
+                    str(Path(numbering_directory).expanduser())
+                    if numbering_directory
+                    else ""
+                ),
+            )
+            self.configuration_store.save(self.completed_configuration)
 
         except (
             SetupError,

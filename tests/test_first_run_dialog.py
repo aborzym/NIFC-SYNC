@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from core.configuration import AppConfiguration
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
@@ -48,7 +50,7 @@ class FirstRunDialogTest(unittest.TestCase):
         dialog.username_edit.setText("nowy-login")
         dialog.password_edit.setText("nowe-hasło")
 
-        complete_setup.return_value = Mock(
+        complete_setup.return_value = AppConfiguration(
             nifc_username="nowy-login",
         )
 

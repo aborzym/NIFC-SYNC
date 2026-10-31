@@ -37,6 +37,8 @@ class AppConfiguration:
 
     setup_completed: bool = False
     statistics_start_month: str = ""
+    folder_index_role: str = ""
+    folder_index_directory: str = ""
 
     def organization_path(self, key):
         for organization_path in self.organization_paths:
@@ -373,6 +375,10 @@ class ConfigurationStore:
         destination = Path(destination_value) if destination_value else None
 
         return AppConfiguration(
+            folder_index_role=str(self.settings.value(
+                self._configuration_key(account_id, "folders/role"), "") or ""),
+            folder_index_directory=str(self.settings.value(
+                self._configuration_key(account_id, "folders/directory"), "") or ""),
             destination=destination,
             storage_kind=self.settings.value(
                 self._configuration_key(
@@ -459,6 +465,8 @@ class ConfigurationStore:
             "credentials/username": configuration.nifc_username,
             "setup/completed": configuration.setup_completed,
             "statistics/start_month": configuration.statistics_start_month,
+            "folders/role": configuration.folder_index_role,
+            "folders/directory": configuration.folder_index_directory,
         }
 
         for key, value in values.items():

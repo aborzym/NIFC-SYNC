@@ -10,7 +10,7 @@ from core.filesystem import (
 from core.scan_manifest import scan_manifest_file_paths, validate_scan_manifest
 from core.scans import folder_matches_scan_group
 
-NUMBER_PATTERN = re.compile(r"(?<!\d)(\d{3})\s*-\s*")
+NUMBER_PATTERN = re.compile(r"^(\d{3,})\s*-\s*")
 
 
 @dataclass(frozen=True)

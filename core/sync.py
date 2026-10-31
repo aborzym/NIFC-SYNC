@@ -1,9 +1,11 @@
 import base64
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
 from core.destinations import marta_fallback_reason, resolve_asset_root
 from core.filesystem import find_existing_transcriptions
+from core.folder_index import FolderIndex
 
 WORKFLOW_CODES = {
     "XML": "XML",
@@ -122,6 +124,22 @@ def sync_transcriptions(
     log=print,
     configuration=None,
 ):
+    context = (
+        FolderIndex(configuration, base_dir, log)
+        if configuration is not None and configuration.folder_index_role
+        else nullcontext(None)
+    )
+    with context as folder_index:
+        return _sync_transcriptions(
+            selected_workflow, base_dir, folder_names, next_number,
+            log=log, configuration=configuration, folder_index=folder_index,
+        )
+
+
+def _sync_transcriptions(
+    selected_workflow, base_dir, folder_names, next_number,
+    log=print, configuration=None, folder_index=None,
+):
 
     if configuration is not None:
         if configuration.naming_profile == "marta-lawrence":
@@ -158,7 +176,14 @@ def sync_transcriptions(
             None,
         )
 
-        if match:
+        if folder_index is not None:
+            folder_name = folder_index.folder_for(workflow_name, api_stem)
+            target_folder = base_dir / folder_name
+            if not target_folder.exists():
+                target_folder.mkdir()
+                created_count += 1
+                log(f"UTWORZONO FOLDER: {target_folder.name}")
+        elif match:
             log(f"ISTNIEJE: {api_name}")
             log(f"        -> {match}")
             target_folder = base_dir / match

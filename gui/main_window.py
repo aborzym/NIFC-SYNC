@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLayout,
     QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -33,6 +35,7 @@ from core.destinations import (
     scan_package_folder_name,
 )
 from core.filesystem import format_file_modified, format_file_size
+from core.folder_index import refresh_folder_index
 from core.network import (
     find_mounted_smb_path,
     format_smb_location,
@@ -74,7 +77,7 @@ class MainWindow(QMainWindow):
         self.configuration_store = ConfigurationStore()
         self.credential_store = CredentialStore()
         self.setWindowTitle(f"NIFC-SYNC {__version__}")
-        self.setMinimumSize(760, 560)
+        self.setMinimumWidth(760)
         self.workflows = {}
         self.catalog_thread = None
         self.catalog_worker = None
@@ -108,6 +111,7 @@ class MainWindow(QMainWindow):
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(18)
 
@@ -221,6 +225,78 @@ class MainWindow(QMainWindow):
             alignment=Qt.AlignmentFlag.AlignRight,
         )
         QTimer.singleShot(2500, self._check_for_updates)
+        numbering_row = QHBoxLayout()
+        self.numbering_button = QPushButton("Numeracja Mac/Linux…")
+        self.numbering_button.clicked.connect(self._configure_folder_index)
+        numbering_row.addWidget(self.numbering_button)
+        self.refresh_numbering_button = QPushButton("Odśwież listę folderów")
+        self.refresh_numbering_button.clicked.connect(self._refresh_folder_index)
+        numbering_row.addWidget(self.refresh_numbering_button)
+        main_layout.addLayout(numbering_row)
+        self._update_numbering_visibility(self.configuration_store.load())
+        QTimer.singleShot(0, self._refresh_folder_index)
+
+    def _update_numbering_visibility(self, configuration):
+        visible = configuration.naming_profile == "andrzej-borzym" and bool(
+            configuration.folder_index_role
+        )
+        if hasattr(self, "numbering_button"):
+            self.numbering_button.setVisible(visible)
+            self.refresh_numbering_button.setVisible(visible)
+
+    def _configure_folder_index(self):
+        if self._is_busy():
+            return
+        configuration = self.configuration_store.load()
+        labels = [
+            "Wyłączona — zwykła numeracja lokalna",
+            "Linux — numery z Maca, nowe projekty tymczasowe",
+            "Mac — główny katalog i przydzielanie numerów",
+        ]
+        roles = ["", "replica", "master"]
+        current = roles.index(configuration.folder_index_role)
+        choice, accepted = QInputDialog.getItem(
+            self, "Numeracja folderów", "Rola tego katalogu:", labels, current, False
+        )
+        if not accepted:
+            return
+        role = roles[labels.index(choice)]
+        folder = configuration.folder_index_directory
+        if role:
+            if configuration.naming_profile != "andrzej-borzym":
+                QMessageBox.warning(self, "Numeracja", "Wybierz profil Andrzej Borzym.")
+                return
+            folder = QFileDialog.getExistingDirectory(
+                self,
+                "Wspólna lista folderów — Dropbox/NIFC-SYNC",
+                folder or str(Path.home() / "Dropbox"),
+            )
+            if not folder:
+                return
+        updated = replace(
+            configuration,
+            destination=self.destination_path,
+            folder_index_role=role,
+            folder_index_directory=folder,
+        )
+        try:
+            refresh_folder_index(updated, self.log_view.append)
+            self.configuration_store.save(updated)
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            QMessageBox.warning(self, "Numeracja folderów", str(error))
+            return
+        self.log_view.append("Zapisano ustawienia numeracji Mac/Linux.")
+
+    def _refresh_folder_index(self):
+        if self._is_busy():
+            return
+        try:
+            configuration = replace(
+                self.configuration_store.load(), destination=self.destination_path
+            )
+            refresh_folder_index(configuration, self.log_view.append)
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            self.log_view.append(f"Lista folderów nie została odświeżona: {error}")
 
     def _open_statistics_dialog(self):
         if self._is_busy():
@@ -391,6 +467,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.modern_radio)
         layout.addWidget(self.xml_radio)
         layout.addStretch()
+        group.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
 
         return group
 
@@ -406,6 +486,10 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.destination_edit, stretch=1)
         layout.addWidget(self.browse_button)
+        self.destination_group.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
 
         return self.destination_group
 
@@ -1520,7 +1604,7 @@ class MainWindow(QMainWindow):
         self.log_view.append(f"Usunięto konto: {active_account.name}.")
 
     def _apply_configuration(self, configuration):
-
+        self._update_numbering_visibility(configuration)
         self._refresh_unpaid_summary()
 
         if configuration.naming_profile == "marta-lawrence":
@@ -1591,3 +1675,4 @@ class MainWindow(QMainWindow):
 
         self._save_settings()
         event.accept()
+        self._refresh_folder_index()
