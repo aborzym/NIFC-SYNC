@@ -30,7 +30,14 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
 
+      - name: Zainstaluj biblioteki systemowe Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1
+
       - name: Uruchom testy
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: .venv/bin/python -m unittest discover -v
 
       - name: Zbuduj pakiet DEB
