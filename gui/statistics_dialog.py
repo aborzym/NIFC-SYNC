@@ -55,6 +55,10 @@ class StatisticsDialog(QDialog):
         layout.setSpacing(12)
 
         self.unpaid_label = QLabel("Niewypłacone: —")
+        self.unpaid_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         font = self.unpaid_label.font()
         font.setPointSize(40)
         font.setBold(True)
@@ -66,6 +70,10 @@ class StatisticsDialog(QDialog):
         self.unpaid_label.setContentsMargins(0, 0, 0, 0)
 
         self.total_label = QLabel("Łącznie wykonano: —")
+        self.total_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.total_label.setStyleSheet(
             "font-size: 13px; font-weight: 400; color: #9aaac2;"
@@ -105,6 +113,21 @@ class StatisticsDialog(QDialog):
         self.status_label = QLabel("Pobierz statystyki dla zapisanego okresu.")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+
+        sync_row = QHBoxLayout()
+        self.sync_folder_button = QPushButton("Folder synchronizacji…")
+        self.sync_folder_button.clicked.connect(self._choose_sync_folder)
+        sync_row.addWidget(self.sync_folder_button)
+        self.sync_button = QPushButton("Synchronizuj rozliczenia")
+        self.sync_button.clicked.connect(self._sync_settlements)
+        sync_row.addWidget(self.sync_button)
+        self.local_button = QPushButton("Tylko lokalnie")
+        self.local_button.clicked.connect(self._disable_sync)
+        sync_row.addWidget(self.local_button)
+        self.sync_label = QLabel("Synchronizacja wyłączona — zapis lokalny.")
+        self.sync_label.setWordWrap(True)
+        sync_row.addWidget(self.sync_label, stretch=1)
+        layout.addLayout(sync_row)
 
         pdf_header = QHBoxLayout()
         pdf_header.addWidget(QLabel("Wypłacone transze"))
@@ -155,6 +178,7 @@ class StatisticsDialog(QDialog):
             store = SettlementStore(self.configuration_store)
             self.settlements, self.approved_matches = store.load()
             self.settlement_store = store
+            self._update_sync_status()
             self._refresh_pdf_table()
             snapshot = store.snapshot
             if (
@@ -171,6 +195,64 @@ class StatisticsDialog(QDialog):
                 "Błąd odczytu zapisanych rozliczeń",
                 f"{error}\n\nZapis jest zablokowany, aby nie nadpisać danych.",
             )
+
+    def _update_sync_status(self):
+        store = self.settlement_store
+        if store is None:
+            return
+        if store.sync_error:
+            self.sync_label.setText(
+                f"Zapis lokalny; synchronizacja oczekuje: {store.sync_error}"
+            )
+        elif store.sync_folder:
+            self.sync_label.setText(
+                "Połączono z folderem. Dostarczenie na drugi komputer zależy "
+                "od aplikacji synchronizującej."
+            )
+        else:
+            self.sync_label.setText("Synchronizacja wyłączona — zapis lokalny.")
+        self.sync_label.setToolTip(str(store.sync_folder))
+
+    def _choose_sync_folder(self):
+        if self.settlement_store is None:
+            return
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Wybierz wspólny folder rozliczeń (np. Dropbox/NIFC-SYNC)",
+            self.settlement_store.sync_folder or str(Path.home() / "Dropbox"),
+        )
+        if not folder:
+            return
+        try:
+            self.settlement_store.set_sync_folder(folder)
+        except OSError as error:
+            QMessageBox.warning(self, "Synchronizacja rozliczeń", str(error))
+            return
+        self._sync_settlements()
+
+    def _disable_sync(self):
+        if self.settlement_store is None:
+            return
+        try:
+            self.settlement_store.set_sync_folder("")
+            self.settlement_store.sync_error = ""
+            self._update_sync_status()
+        except OSError as error:
+            QMessageBox.warning(self, "Synchronizacja rozliczeń", str(error))
+
+    def _sync_settlements(self):
+        if self.settlement_store is None:
+            return
+        try:
+            self.settlement_store.snapshot = self.snapshot
+            self.settlements, self.approved_matches = self.settlement_store.synchronize(
+                self.settlements, self.approved_matches
+            )
+            self._refresh_pdf_table()
+            self._show_reconciliation(review=False)
+            self._update_sync_status()
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            QMessageBox.warning(self, "Synchronizacja rozliczeń", str(error))
 
     def _save_start_month(self):
         selected = self.start_month.date()
@@ -274,6 +356,14 @@ class StatisticsDialog(QDialog):
                     self.settlements,
                     self.approved_matches,
                 )
+                if self.settlement_store.sync_error:
+                    QMessageBox.warning(
+                        self,
+                        "Rozliczenia zapisane lokalnie",
+                        "Nie udało się zsynchronizować rozliczeń. "
+                        "Spróbujemy ponownie przy otwarciu okna.\n\n"
+                        + str(self.settlement_store.sync_error),
+                    )
             except (OSError, ValueError, TypeError) as error:
                 QMessageBox.warning(
                     self,

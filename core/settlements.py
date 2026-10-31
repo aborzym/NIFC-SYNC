@@ -65,16 +65,23 @@ def read_settlement_pdf(path):
     return parse_settlement_text(text)
 
 
+def _comparison_filename(item):
+    name = item["file_name"]
+    if item["scheme"] == "KRN-modern" and name.endswith(".krn-modern"):
+        return name.removesuffix("-modern")
+    return name
+
+
 def _compare_exact_statistics(entries, paid_entries):
     statistics = {}
     settlements = {}
 
     for item in entries:
-        key = (item["scheme"], item["file_name"])
+        key = (item["scheme"], _comparison_filename(item))
         statistics.setdefault(key, []).append(item)
 
     for item in paid_entries:
-        key = (item["scheme"], item["file_name"])
+        key = (item["scheme"], _comparison_filename(item))
         settlements.setdefault(key, []).append(item)
 
     paid = []

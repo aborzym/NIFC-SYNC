@@ -37,6 +37,8 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
         with patch("gui.statistics_dialog.SettlementStore") as factory:
             factory.return_value.load.return_value = ({}, set())
             factory.return_value.snapshot = snapshot
+            factory.return_value.sync_error = ""
+            factory.return_value.sync_folder = ""
             dialog = StatisticsDialog(configuration, credential_store=Mock())
         self.addCleanup(dialog.close)
         return dialog

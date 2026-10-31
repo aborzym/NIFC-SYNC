@@ -142,6 +142,10 @@ class MainWindow(QMainWindow):
         action_layout.addWidget(self.statistics_button)
 
         self.unpaid_summary_label = QLabel("Niewypłacone: —")
+        self.unpaid_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         summary_font = self.unpaid_summary_label.font()
         summary_font.setPointSize(32)
         summary_font.setBold(True)
