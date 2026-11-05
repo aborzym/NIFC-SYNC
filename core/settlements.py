@@ -4,13 +4,13 @@ from pypdf import PdfReader
 
 ROW_PATTERN = re.compile(
     r"^\s*(\d+)\s+(KRN-diplomatic|KRN-modern|XML)\s+"
-    r"(.+?)\s+(\d+)\s*$"
+    r"(.+?)\s+(-?\d+)\s*$"
 )
 
 
 def parse_settlement_text(text):
     totals = re.findall(
-        r"łączna liczba znaków:\s*([0-9][0-9 \u00a0]*)",
+        r"łączna liczba znaków:\s*(-?[0-9][0-9 \u00a0]*)",
         text,
         flags=re.IGNORECASE,
     )
@@ -125,7 +125,8 @@ def _matching_filename(name):
 
 
 def compare_statistics(entries, paid_entries, approved=()):
-    result = _compare_exact_statistics(entries, paid_entries)
+    regular_entries = tuple(item for item in entries if item["note_count"] >= 0)
+    result = _compare_exact_statistics(regular_entries, paid_entries)
     paid = list(result["paid"])
     unpaid = list(result["unpaid"])
     unresolved = list(result["unresolved"])
@@ -173,6 +174,32 @@ def compare_statistics(entries, paid_entries, approved=()):
                 }
             )
 
+    corrections = [item for item in entries if item["note_count"] < 0]
+    pending_corrections = []
+    settled_corrections = []
+
+    for correction in corrections:
+        matches = [
+            item
+            for item in outside
+            if item["scheme"] == correction["scheme"]
+            and _comparison_filename(item) == _comparison_filename(correction)
+            and item["note_count"] == correction["note_count"]
+        ]
+        duplicates = [
+            item
+            for item in corrections
+            if item["scheme"] == correction["scheme"]
+            and _comparison_filename(item) == _comparison_filename(correction)
+            and item["note_count"] == correction["note_count"]
+        ]
+
+        if len(matches) == 1 and len(duplicates) == 1:
+            outside.remove(matches[0])
+            settled_corrections.append(correction)
+        else:
+            pending_corrections.append(correction)
+
     return {
         "paid": tuple(paid),
         "unpaid": tuple(unpaid),
@@ -180,6 +207,9 @@ def compare_statistics(entries, paid_entries, approved=()):
         "outside": tuple(outside),
         "differences": tuple(differences),
         "paid_total": sum(item["note_count"] for item in paid),
-        "unpaid_total": sum(item["note_count"] for item in unpaid),
+        "pending_corrections": tuple(pending_corrections),
+        "settled_corrections": tuple(settled_corrections),
+        "unpaid_total": sum(item["note_count"] for item in unpaid)
+        + sum(item["note_count"] for item in pending_corrections),
         "unresolved_total": sum(item["note_count"] for item in unresolved),
     }

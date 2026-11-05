@@ -415,9 +415,7 @@ class StatisticsDialog(QDialog):
         total = sum(item["note_count"] for item in self.entries)
         count_total = f"{total:,}".replace(",", " ")
         start = datetime.fromisoformat(self.snapshot["start_date"]).strftime("%d.%m.%Y")
-        self.total_label.setText(
-            f"Łącznie wykonano: {count_total} znaków · od {start}"
-        )
+        self.total_label.setText(f"Łącznie wykonano: {count_total} znaków · od {start}")
         refreshed = datetime.fromisoformat(self.snapshot["refreshed_at"])
         self.refreshed_label.setText(
             f"Odświeżono: {refreshed.strftime('%d.%m.%Y, %H:%M')}"
@@ -507,16 +505,36 @@ class StatisticsDialog(QDialog):
             lines.append(
                 f"{item['scheme']} | {item['note_count']} | {item['file_name']}"
             )
+        corrections = [item for item in self.entries if item["note_count"] < 0]
+        correction_total = sum(item["note_count"] for item in corrections)
+
         lines.extend(
             [
                 "",
                 "SZCZEGÓŁY PODSUMOWANIA",
-                f"Wszystkie znaki w okresie: {total}",
+                f"Wszystkie znaki w okresie (po korektach): {total}",
+                f"Korekty znaków łącznie: {correction_total}",
+                (
+                    "Korekty jeszcze nieuwzględnione w PDF-ach: "
+                    f"{sum(item['note_count'] for item in result['pending_corrections'])}"
+                ),
                 f"Wypłacone — dopasowane: {result['paid_total']}",
                 f"Do wyjaśnienia: {result['unresolved_total']}",
                 f"Wczytane PDF-y: {len(self.settlements)}",
             ]
         )
+        for heading, key in (
+            ("KOREKTY — OCZEKUJĄ NA PDF", "pending_corrections"),
+            ("KOREKTY — UJĘTE W PDF", "settled_corrections"),
+        ):
+            lines.extend(["", heading])
+            if not result[key]:
+                lines.append("Brak.")
+            for item in result[key]:
+                lines.append(
+                    f"{item['submission_time'][:10]} | {item['scheme']} | "
+                    f"{item['note_count']} | {item['file_name']}"
+                )
         self.report.setPlainText("\n".join(lines))
 
     def _refresh_pdf_table(self):

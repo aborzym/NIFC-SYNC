@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from core.settlements import compare_statistics, parse_settlement_text
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QApplication, QLabel
@@ -26,9 +28,9 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
         return {
             "start_date": "2026-01-01",
             "refreshed_at": "2026-10-17T15:00:00+02:00",
-            "entries": entries if entries is not None else [
-                {"note_count": 1200}, {"note_count": 345}
-            ],
+            "entries": entries
+            if entries is not None
+            else [{"note_count": 1200}, {"note_count": 345}],
         }
 
     def statistics_dialog(self, snapshot):
@@ -105,13 +107,46 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
             factory.return_value.snapshot = self.snapshot()
             compare.return_value = {"unpaid_total": 345, "unresolved_total": 0}
             MainWindow._refresh_unpaid_summary(window)
-            self.assertEqual(window.unpaid_summary_label.text(), "Niewypłacone: 345 znaków")
+            self.assertEqual(
+                window.unpaid_summary_label.text(), "Niewypłacone: 345 znaków"
+            )
             self.assertFalse(window.unpaid_summary_label.isHidden())
             self.assertFalse(hasattr(window, "total_summary_label"))
             configuration.load.return_value.statistics_start_month = "2026-02-01"
             MainWindow._refresh_unpaid_summary(window)
             self.assertTrue(window.unpaid_summary_label.isHidden())
             self.assertEqual(window.unpaid_summary_label.text(), "Niewypłacone: —")
+
+    def test_negative_correction_reduces_unpaid_until_it_appears_in_pdf(self):
+        score = {"scheme": "XML", "file_name": "utwor.xml", "note_count": 100}
+        correction = {
+            "scheme": "XML",
+            "file_name": "*** korekta.xml",
+            "note_count": -10,
+        }
+
+        before_payment = compare_statistics((score, correction), ())
+        self.assertEqual(before_payment["unpaid_total"], 90)
+
+        score_paid = compare_statistics((score, correction), (score,))
+        self.assertEqual(score_paid["unpaid_total"], -10)
+        self.assertEqual(score_paid["pending_corrections"], (correction,))
+
+        correction_paid = compare_statistics((score, correction), (score, correction))
+        self.assertEqual(correction_paid["unpaid_total"], 0)
+        self.assertEqual(correction_paid["settled_corrections"], (correction,))
+        self.assertEqual(correction_paid["outside"], ())
+
+    def test_settlement_parser_accepts_negative_correction(self):
+        text = (
+            "Wykonawca: Andrzej Borzym\n"
+            "łączna liczba znaków: 90\n"
+            "1 XML utwor.xml 100\n"
+            "1 XML *** korekta.xml -10\n"
+        )
+        parsed = parse_settlement_text(text)
+        self.assertEqual(parsed["total"], 90)
+        self.assertEqual(parsed["entries"][1]["note_count"], -10)
 
 
 if __name__ == "__main__":

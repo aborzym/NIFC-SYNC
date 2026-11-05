@@ -61,8 +61,6 @@ def statistics_entries(monthly_data, start_date=None):
                     raise ValueError(f"Brak daty dla {filename}.")
                 if type(count) is not int:
                     raise TypeError(f"Nieprawidłowa liczba znaków: {filename}.")
-                if count < 0:
-                    raise ValueError(f"Ujemna liczba znaków: {filename}.")
 
                 submitted_date = datetime.fromisoformat(submitted).date()
                 if cutoff is not None and submitted_date < cutoff:
