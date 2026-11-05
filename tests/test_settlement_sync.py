@@ -72,6 +72,28 @@ class SettlementSyncTest(unittest.TestCase):
         self.assertEqual(set(second.load()[0]), {"a", "b"})
         self.assertEqual(set(first.load()[0]), {"a", "b"})
 
+    def test_same_pdf_with_different_local_names_does_not_conflict(self):
+        linux = self.store("linux")
+        mac = self.store("mac")
+        self.shared.rename(self.root / "offline")
+
+        linux_pdf = document()
+        linux_pdf["filename"] = "pełna-nazwa.pdf"
+        mac_pdf = document()
+        mac_pdf["filename"] = "01.pdf"
+
+        linux.save({"same-digest": linux_pdf}, set())
+        mac.save({"same-digest": mac_pdf}, set())
+
+        self.shared.mkdir()
+        linux = self.store("linux")
+        mac = self.store("mac")
+
+        self.assertEqual(linux.sync_error, "")
+        self.assertEqual(mac.sync_error, "")
+        self.assertEqual(len(mac.load()[0]), 1)
+        self.assertEqual(len(list(self.shared.rglob("*.json"))), 2)
+
     def test_delete_is_not_resurrected_by_stale_device(self):
         first = self.store("linux")
         first.save({"a": document()}, set())

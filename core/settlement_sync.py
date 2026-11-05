@@ -49,6 +49,20 @@ def validate_event(event):
             raise ValueError("Nieprawidłowe zatwierdzenie dopasowania.")
 
 
+def _same_value(kind, left, right):
+    if left == right:
+        return True
+    if (
+        kind != "settlement"
+        or not isinstance(left, dict)
+        or not isinstance(right, dict)
+    ):
+        return False
+    return {key: value for key, value in left.items() if key != "filename"} == {
+        key: value for key, value in right.items() if key != "filename"
+    }
+
+
 def materialize(events):
     removed = set()
     for event in events.values():
@@ -61,7 +75,7 @@ def materialize(events):
             continue
         kind, key, value = event["kind"], event["key"], event["value"]
         previous = values[kind].get(key)
-        if previous is not None and previous != value:
+        if previous is not None and not _same_value(kind, previous, value):
             raise ValueError(
                 "Sprzeczne wersje tego samego rozliczenia. Zachowano oba zapisy."
             )
@@ -84,7 +98,7 @@ def record_changes(events, settlements, approvals):
     for kind, wanted_values in wanted.items():
         for key in values[kind].keys() | wanted_values.keys():
             old, new = values[kind].get(key), wanted_values.get(key)
-            if old != new:
+            if not _same_value(kind, old, new):
                 event = {
                     "version": 1,
                     "kind": kind,
