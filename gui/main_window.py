@@ -35,7 +35,12 @@ from core.destinations import (
     scan_package_folder_name,
 )
 from core.filesystem import format_file_modified, format_file_size
-from core.folder_index import refresh_folder_index
+from core.folder_index import (
+    CODES,
+    FOLDER,
+    identity,
+    refresh_folder_index,
+)
 from core.network import (
     find_mounted_smb_path,
     format_smb_location,
@@ -957,6 +962,11 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self.submission_project_key = identity(
+            CODES[workflow["name"]],
+            Path(api_file["name"]).stem,
+        )
+        self.submission_file_path = Path(file_path)
         self.submission_succeeded = False
         self.submission_response = ""
         self._set_controls_enabled(False)
@@ -1032,6 +1042,59 @@ class MainWindow(QMainWindow):
             dialog.setDetailedText(self.submission_response)
         dialog.exec()
 
+    def _move_submitted_folder(self):
+        configuration = self.configuration_store.load()
+        if (
+            configuration.naming_profile != "andrzej-borzym"
+            or configuration.folder_index_role != "master"
+            or self.destination_path is None
+        ):
+            return
+
+        base = Path(self.destination_path).absolute()
+        file_path = self.submission_file_path.absolute()
+        allowed_roots = (base, base / "DO WYSŁANIA")
+
+        for folder in file_path.parents:
+            if folder.parent not in allowed_roots:
+                continue
+
+            match = FOLDER.fullmatch(folder.name)
+            if (
+                match is None
+                or identity(match[2], match[3]) != self.submission_project_key
+            ):
+                continue
+            if folder.is_symlink() or not file_path.resolve().is_relative_to(
+                folder.resolve()
+            ):
+                raise ValueError(f"Niebezpieczna ścieżka projektu: {folder}")
+
+            sent = base / "WYSŁANE"
+            if sent.is_symlink():
+                raise ValueError(f"Folder WYSŁANE jest dowiązaniem: {sent}")
+            sent.mkdir(exist_ok=True)
+            target = sent / folder.name
+            if target.exists() or target.is_symlink():
+                raise FileExistsError(f"Folder już istnieje w WYSŁANE: {target}")
+
+            folder.rename(target)
+            self.log_view.append(f"PRZENIESIONO DO WYSŁANE: {target}")
+            try:
+                refresh_folder_index(
+                    replace(configuration, destination=base),
+                    self.log_view.append,
+                )
+            except (OSError, ValueError, TypeError, KeyError) as error:
+                self.log_view.append(
+                    f"Folder przeniesiony; publikacja listy czeka: {error}"
+                )
+            return
+
+        self.log_view.append(
+            "Plik wysłany; nie przeniesiono folderu spoza rozpoznanego projektu."
+        )
+
     def _submission_thread_finished(self):
         self._stop_activity_indicator()
         self.progress_bar.setRange(0, 100)
@@ -1043,6 +1106,12 @@ class MainWindow(QMainWindow):
         self._update_sync_button()
 
         if self.submission_succeeded:
+            try:
+                self._move_submitted_folder()
+            except (OSError, ValueError) as error:
+                self.log_view.append(
+                    f"Plik wysłany, ale folder pozostał na miejscu: {error}"
+                )
             self.load_catalog()
 
     def _open_download_dialog(self):

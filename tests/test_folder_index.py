@@ -16,6 +16,34 @@ from core.sync import sync_transcriptions
 
 
 class FolderIndexTest(unittest.TestCase):
+    def test_historic_xml_revision_folder_marks_krn_as_sent(self):
+        self.refresh(self.master)
+        historic = self.mac / "WYSŁANE" / "047 - XML rev - D - historyczna-nazwa"
+        historic.mkdir(parents=True)
+        (historic / "rzeczywista-nazwa.krn").write_text("zachowaj", encoding="utf-8")
+
+        self.refresh(self.master)
+        catalog_path = next(self.shared.rglob("catalog.json"))
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        self.assertIn("D - rzeczywista-nazwa", catalog["sent_legacy"])
+        self.assertNotIn("D - rzeczywista-nazwa", catalog["entries"])
+
+        linux_copy = self.linux / "047 - D - rzeczywista-nazwa"
+        linux_copy.mkdir()
+        (linux_copy / "edit.krn").write_text("edycja", encoding="utf-8")
+        self.refresh(self.replica)
+
+        self.assertFalse(linux_copy.exists())
+        archives = list(
+            self.linux.glob(".nifc-folder-index/*/sent/047 - D - rzeczywista-nazwa")
+        )
+        self.assertEqual(len(archives), 1)
+        self.assertEqual(
+            (archives[0] / "edit.krn").read_text(encoding="utf-8"),
+            "edycja",
+        )
+        self.assertTrue(historic.is_dir())
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -148,6 +176,46 @@ class FolderIndexTest(unittest.TestCase):
             self.sync(self.replica)
         self.assertTrue((self.linux / "001 - D - other").is_dir())
 
+    def test_mac_folders_override_stale_numbers_and_archive_sent_linux_copy(self):
+        self.refresh(self.master)
+        shared_catalog = next(self.shared.rglob("catalog.json"))
+        local_catalog = next(self.mac.glob(".nifc-folder-index/*/catalog.json"))
+        stale = json.loads(shared_catalog.read_text(encoding="utf-8"))
+        stale["entries"] = {
+            "XML - sent": "111 - XML - sent",
+            "XML - linux-only": "105 - XML - linux-only",
+        }
+        for path in (shared_catalog, local_catalog):
+            path.write_text(json.dumps(stale), encoding="utf-8")
+
+        (self.mac / "WYSŁANE").mkdir()
+        (self.mac / "WYSŁANE" / "105 - XML - sent").mkdir()
+        (self.mac / "112 - XML - active").mkdir()
+        sent_linux = self.linux / "111 - XML - sent"
+        sent_linux.mkdir()
+        (sent_linux / "edited.musicxml").write_text("zachowaj", encoding="utf-8")
+        (self.linux / "105 - XML - linux-only").mkdir()
+
+        self.refresh(self.master)
+        updated = json.loads(shared_catalog.read_text(encoding="utf-8"))
+        self.assertEqual(updated["entries"]["XML - sent"], "105 - XML - sent")
+        self.assertEqual(updated["entries"]["XML - active"], "112 - XML - active")
+        self.assertEqual(
+            updated["entries"]["XML - linux-only"], "113 - XML - linux-only"
+        )
+        self.assertIn("XML - sent", updated["sent"])
+        self.assertTrue((self.mac / "WYSŁANE" / "105 - XML - sent").is_dir())
+
+        self.refresh(self.replica)
+        self.assertFalse(sent_linux.exists())
+        self.assertTrue((self.linux / "113 - XML - linux-only").is_dir())
+        archives = list(self.linux.glob(".nifc-folder-index/*/sent/111 - XML - sent"))
+        self.assertEqual(len(archives), 1)
+        self.assertEqual(
+            (archives[0] / "edited.musicxml").read_text(encoding="utf-8"),
+            "zachowaj",
+        )
+
     def test_rename_does_not_replace_file(self):
         temporary = self.sync(self.replica)
         self.refresh(self.master)
@@ -192,9 +260,11 @@ class FolderIndexTest(unittest.TestCase):
         self.assertNotIn(str(self.mac), content)
 
     def test_lock_blocks_concurrent_operation(self):
-        with FolderIndex(self.master, self.mac, lambda _: None):
-            with self.assertRaises(OSError):
-                self.refresh(self.master)
+        with (
+            FolderIndex(self.master, self.mac, lambda _: None),
+            self.assertRaises(OSError),
+        ):
+            self.refresh(self.master)
 
     def test_other_account_has_separate_index(self):
         self.sync(self.master)

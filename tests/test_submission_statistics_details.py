@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QApplication, QLabel
 
+from core.configuration import AppConfiguration
 from core.filesystem import format_file_modified
 from core.submission import SubmissionInspection
 from gui.main_window import MainWindow
@@ -147,6 +148,67 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
         parsed = parse_settlement_text(text)
         self.assertEqual(parsed["total"], 90)
         self.assertEqual(parsed["entries"][1]["note_count"], -10)
+
+    def test_confirmed_submission_moves_only_matching_project_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            project = base / "105 - XML - piece"
+            project.mkdir()
+            file_path = project / "piece.musicxml"
+            file_path.write_text("edited score", encoding="utf-8")
+
+            configuration = AppConfiguration(
+                destination=base,
+                naming_profile="andrzej-borzym",
+                folder_index_role="master",
+            )
+            window = SimpleNamespace(
+                configuration_store=Mock(),
+                destination_path=base,
+                submission_file_path=file_path,
+                submission_project_key="XML - piece",
+                log_view=Mock(),
+            )
+            window.configuration_store.load.return_value = configuration
+
+            with patch("gui.main_window.refresh_folder_index") as refresh:
+                MainWindow._move_submitted_folder(window)
+
+            moved = base / "WYSŁANE" / project.name
+            self.assertFalse(project.exists())
+            self.assertEqual(
+                (moved / file_path.name).read_text(encoding="utf-8"),
+                "edited score",
+            )
+            refresh.assert_called_once()
+
+            unrelated = base / "106 - XML - other"
+            unrelated.mkdir()
+            other_file = unrelated / "piece.musicxml"
+            other_file.write_text("keep", encoding="utf-8")
+            window.submission_file_path = other_file
+            with patch("gui.main_window.refresh_folder_index") as refresh:
+                MainWindow._move_submitted_folder(window)
+            self.assertTrue(other_file.exists())
+            refresh.assert_not_called()
+            pending = base / "DO WYSŁANIA" / "107 - XML - pending"
+            pending.mkdir(parents=True)
+            pending_file = pending / "pending.musicxml"
+            pending_file.write_text("pending score", encoding="utf-8")
+            window.submission_file_path = pending_file
+            window.submission_project_key = "XML - pending"
+
+            with patch("gui.main_window.refresh_folder_index") as refresh:
+                MainWindow._move_submitted_folder(window)
+
+            self.assertFalse(pending.exists())
+            self.assertEqual(
+                (base / "WYSŁANE" / pending.name / pending_file.name).read_text(
+                    encoding="utf-8"
+                ),
+                "pending score",
+            )
+            refresh.assert_called_once()
 
 
 if __name__ == "__main__":
