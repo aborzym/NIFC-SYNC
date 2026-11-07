@@ -34,14 +34,7 @@ class FolderIndexTest(unittest.TestCase):
         self.refresh(self.replica)
 
         self.assertFalse(linux_copy.exists())
-        archives = list(
-            self.linux.glob(".nifc-folder-index/*/sent/047 - D - rzeczywista-nazwa")
-        )
-        self.assertEqual(len(archives), 1)
-        self.assertEqual(
-            (archives[0] / "edit.krn").read_text(encoding="utf-8"),
-            "edycja",
-        )
+        self.assertFalse(list(self.linux.glob(".nifc-folder-index/*/sent/*")))
         self.assertTrue(historic.is_dir())
 
     def setUp(self):
@@ -176,7 +169,7 @@ class FolderIndexTest(unittest.TestCase):
             self.sync(self.replica)
         self.assertTrue((self.linux / "001 - D - other").is_dir())
 
-    def test_mac_folders_override_stale_numbers_and_archive_sent_linux_copy(self):
+    def test_mac_folders_override_stale_numbers_and_remove_sent_linux_copy(self):
         self.refresh(self.master)
         shared_catalog = next(self.shared.rglob("catalog.json"))
         local_catalog = next(self.mac.glob(".nifc-folder-index/*/catalog.json"))
@@ -209,12 +202,7 @@ class FolderIndexTest(unittest.TestCase):
         self.refresh(self.replica)
         self.assertFalse(sent_linux.exists())
         self.assertTrue((self.linux / "113 - XML - linux-only").is_dir())
-        archives = list(self.linux.glob(".nifc-folder-index/*/sent/111 - XML - sent"))
-        self.assertEqual(len(archives), 1)
-        self.assertEqual(
-            (archives[0] / "edited.musicxml").read_text(encoding="utf-8"),
-            "zachowaj",
-        )
+        self.assertFalse(list(self.linux.glob(".nifc-folder-index/*/sent/*")))
 
     def test_rename_does_not_replace_file(self):
         temporary = self.sync(self.replica)

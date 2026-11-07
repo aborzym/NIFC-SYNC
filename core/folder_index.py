@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from uuid import uuid4
@@ -177,7 +178,7 @@ class FolderIndex:
             self.catalog["sent"] = sorted(self.sent_keys)
             self.catalog["sent_legacy"] = sorted(self.legacy_sent_keys)
         if self.role == "replica" and self.catalog is not None:
-            self._archive_sent_folders()
+            self._remove_sent_folders()
         self._validate_numbers()
         if self.catalog is not None:
             atomic_json(self.cache, self.catalog)
@@ -270,30 +271,31 @@ class FolderIndex:
         for key in displaced:
             self._allocate(key)
 
-    def _archive_sent_folders(self):
+    def _remove_sent_folders(self):
         sent = set(self.catalog.get("sent", []))
         sent.update(self.catalog.get("sent_legacy", []))
+
         for key in sorted(sent & self.folders.keys()):
             old = self.folders[key]
             source = self.base / old
-            archive = self.cache.parent / "sent" / old
-
-            if source.is_symlink() or not source.is_dir():
+            match = FOLDER.fullmatch(old)
+            if (
+                match is None
+                or identity(match[2], match[3]) != key
+                or source.is_symlink()
+                or not source.is_dir()
+            ):
                 raise ValueError(f"Nieprawidłowy folder projektu: {source}")
-            if archive.exists() or archive.is_symlink():
-                raise FileExistsError(f"Archiwum już zawiera folder: {archive}")
 
-            archive.parent.mkdir(parents=True, exist_ok=True)
-            source.rename(archive)
+            shutil.rmtree(source)
             del self.folders[key]
 
-            match = FOLDER.fullmatch(old)
-            if match and match[1] != "TMP":
+            if match[1] != "TMP":
                 number = int(match[1])
                 self.local_numbers.pop(number, None)
                 self.used_numbers.discard(number)
 
-            self.log(f"WYSŁANE NA MACU — odłożono kopię Linuksa: {old}")
+            self.log(f"USUNIĘTO NA LINUKSIE — wysłane na Macu: {old}")
 
     def _validate_numbers(self):
         assigned = {}
