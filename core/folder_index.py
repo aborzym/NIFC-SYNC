@@ -236,7 +236,9 @@ class FolderIndex:
         for key, old in self.folders.items():
             new = self.entries.get(key)
             if new and old != new:
-                if not old.startswith("TMP - "):
+                if not old.startswith("TMP - ") and (
+                    self.role != "replica" or not FOLDER.fullmatch(old)
+                ):
                     raise ValueError(f"Lokalny numer jest inny niż na Macu: {old}")
                 target = self.base / new
                 if target.exists() or target.is_symlink():

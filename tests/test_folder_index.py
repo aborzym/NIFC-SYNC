@@ -96,6 +96,22 @@ class FolderIndexTest(unittest.TestCase):
         self.assertEqual(self.sync(self.replica).name, "051 - M - bajka")
         self.assertFalse(list(self.linux.glob("TMP*")))
 
+    def test_mac_number_replaces_existing_linux_number_without_losing_files(self):
+        (self.mac / "111 - XML - bajka").mkdir()
+        old = self.linux / "003 - XML - bajka"
+        old.mkdir()
+        (old / "bajka.musicxml").write_text("edycja z Linuksa")
+
+        self.refresh(self.master)
+        self.refresh(self.replica)
+
+        new = self.linux / "111 - XML - bajka"
+        self.assertFalse(old.exists())
+        self.assertEqual(
+            (new / "bajka.musicxml").read_text(),
+            "edycja z Linuksa",
+        )
+
     def test_requests_reserve_numbers_before_mac_download(self):
         self.sync(self.replica)
         self.refresh(self.master)
