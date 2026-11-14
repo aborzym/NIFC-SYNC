@@ -16,6 +16,31 @@ from core.sync import sync_transcriptions
 
 
 class FolderIndexTest(unittest.TestCase):
+    def test_prefixed_folder_keeps_identity_after_move_to_sent(self):
+        marked = self.mac / "PILNE - 098 - D - bajka"
+        marked.mkdir()
+        self.assertEqual(
+            self.sync(self.master, workflow="KRN-diplomatic"),
+            marked,
+        )
+
+        sent = self.mac / "WYSŁANE"
+        sent.mkdir()
+        marked.rename(sent / marked.name)
+        self.refresh(self.master)
+
+        catalog = json.loads(
+            next(self.shared.rglob("catalog.json")).read_text(encoding="utf-8")
+        )
+        self.assertEqual(catalog["entries"]["D - bajka"], "098 - D - bajka")
+        self.assertIn("D - bajka", catalog["sent"])
+
+        linux_copy = self.linux / "098 - D - bajka"
+        linux_copy.mkdir()
+        self.refresh(self.replica)
+        self.assertFalse(linux_copy.exists())
+        self.assertTrue((sent / marked.name).is_dir())
+
     def test_marked_mac_folder_is_reused_without_renaming_or_download(self):
         marked = self.mac / "*GRĘZIAK - tekst i rogi - 098 - M - bajka"
         marked.mkdir()

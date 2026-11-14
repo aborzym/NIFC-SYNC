@@ -38,6 +38,7 @@ from core.filesystem import format_file_modified, format_file_size
 from core.folder_index import (
     CODES,
     FOLDER,
+    PREFIXED_FOLDER,
     identity,
     refresh_folder_index,
 )
@@ -1059,7 +1060,9 @@ class MainWindow(QMainWindow):
             if folder.parent not in allowed_roots:
                 continue
 
-            match = FOLDER.fullmatch(folder.name)
+            match = FOLDER.fullmatch(folder.name) or PREFIXED_FOLDER.fullmatch(
+                folder.name
+            )
             if (
                 match is None
                 or identity(match[2], match[3]) != self.submission_project_key

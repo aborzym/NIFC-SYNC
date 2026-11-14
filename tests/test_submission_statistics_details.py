@@ -46,6 +46,39 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
         self.addCleanup(dialog.close)
         return dialog
 
+    def test_submission_moves_prefixed_project_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            project = base / "PILNE - 140 - D - utwor"
+            project.mkdir()
+            score = project / "utwor.krn"
+            score.write_text("moja edycja", encoding="utf-8")
+
+            configuration = AppConfiguration(
+                destination=base,
+                naming_profile="andrzej-borzym",
+                folder_index_role="master",
+            )
+            window = SimpleNamespace(
+                configuration_store=Mock(),
+                destination_path=base,
+                submission_file_path=score,
+                submission_project_key="D - utwor",
+                log_view=Mock(),
+            )
+            window.configuration_store.load.return_value = configuration
+
+            with patch("gui.main_window.refresh_folder_index") as refresh:
+                MainWindow._move_submitted_folder(window)
+
+            target = base / "WYSŁANE" / project.name
+            self.assertFalse(project.exists())
+            self.assertEqual(
+                (target / score.name).read_text(encoding="utf-8"),
+                "moja edycja",
+            )
+            refresh.assert_called_once()
+
     def test_local_modification_time_and_preview(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "score.xml"

@@ -13,6 +13,7 @@ from PySide6.QtCore import QLockFile
 
 CODES = {"KRN-diplomatic": "D", "KRN-modern": "M", "XML": "XML"}
 FOLDER = re.compile(r"^(\d{3,}|TMP) - (D|M|XML) - (.+)$")
+PREFIXED_FOLDER = re.compile(r"^.+ - (\d{3,}) - (D|M|XML) - (.+)$")
 HISTORIC_XML_REV_D = re.compile(
     r"^\d{3,}\s*-\s*XML\s*rev\s*-\s*D\s*-\s*.+$",
     re.IGNORECASE,
@@ -220,15 +221,8 @@ class FolderIndex:
 
                 match = FOLDER.fullmatch(path.name)
                 if not match:
-                    if (
-                        self.role == "master"
-                        and root == self.base
-                        and path.name.startswith("*")
-                    ):
-                        marked = re.search(
-                            r" - (\d{3,}) - (D|M|XML) - (.+)$",
-                            path.name,
-                        )
+                    if self.role == "master":
+                        marked = PREFIXED_FOLDER.fullmatch(path.name)
                         if marked:
                             number, code, stem = marked.groups()
                             key = identity(code, stem)
@@ -244,7 +238,10 @@ class FolderIndex:
                                 )
 
                             seen_projects.add(key)
-                            self.folders[key] = path.name
+                            if root == self.base:
+                                self.folders[key] = path.name
+                            if root == self.base / "WYSŁANE":
+                                self.sent_keys.add(key)
                             self.marked_folders[key] = path.name
                             self.local_numbers[parsed_number] = path.name
                             self.used_numbers.add(parsed_number)
