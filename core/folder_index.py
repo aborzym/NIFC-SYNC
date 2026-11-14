@@ -196,6 +196,7 @@ class FolderIndex:
             else (self.base,)
         )
         self.sent_keys = set()
+        self.marked_folders = {}
         self.legacy_sent_keys = set()
         seen_projects = set()
 
@@ -219,6 +220,37 @@ class FolderIndex:
 
                 match = FOLDER.fullmatch(path.name)
                 if not match:
+                    if (
+                        self.role == "master"
+                        and root == self.base
+                        and path.name.startswith("*")
+                    ):
+                        marked = re.search(
+                            r" - (\d{3,}) - (D|M|XML) - (.+)$",
+                            path.name,
+                        )
+                        if marked:
+                            number, code, stem = marked.groups()
+                            key = identity(code, stem)
+                            parsed_number = int(number)
+
+                            if key in seen_projects:
+                                raise ValueError(
+                                    f"Dwa foldery tego samego projektu: {key}"
+                                )
+                            if parsed_number in self.local_numbers:
+                                raise ValueError(
+                                    f"Powtórzony numer folderu na Macu: {number}"
+                                )
+
+                            seen_projects.add(key)
+                            self.folders[key] = path.name
+                            self.marked_folders[key] = path.name
+                            self.local_numbers[parsed_number] = path.name
+                            self.used_numbers.add(parsed_number)
+                            self.entries[key] = f"{number} - {key}"
+                            continue
+
                     if (
                         self.role == "master"
                         and root == self.base / "WYSŁANE"
@@ -307,13 +339,16 @@ class FolderIndex:
             self.used_numbers.add(number)
             local_name = self.local_numbers.get(number)
             if local_name is not None and local_name != name:
+                marked_here = (
+                    self.role == "master" and self.marked_folders.get(key) == local_name
+                )
                 will_be_renamed = self.role == "replica" and any(
                     old == local_name
                     and key in self.entries
                     and self.entries[key] != old
                     for key, old in self.folders.items()
                 )
-                if not will_be_renamed:
+                if not marked_here and not will_be_renamed:
                     raise ValueError(
                         f"Numer {number} zajmuje inny lokalny folder: {local_name}"
                     )
@@ -353,6 +388,8 @@ class FolderIndex:
         for key, old in self.folders.items():
             new = self.entries.get(key)
             if new and old != new:
+                if self.role == "master" and self.marked_folders.get(key) == old:
+                    continue
                 if not old.startswith("TMP - ") and (
                     self.role != "replica" or not FOLDER.fullmatch(old)
                 ):

@@ -16,6 +16,24 @@ from core.sync import sync_transcriptions
 
 
 class FolderIndexTest(unittest.TestCase):
+    def test_marked_mac_folder_is_reused_without_renaming_or_download(self):
+        marked = self.mac / "*GRĘZIAK - tekst i rogi - 098 - M - bajka"
+        marked.mkdir()
+        partial = marked / "bajka do t. 65.krn"
+        partial.write_text("moja edycja", encoding="utf-8")
+
+        self.refresh(self.master)
+        self.assertEqual(self.sync(self.master), marked)
+        self.assertTrue(marked.is_dir())
+        self.assertFalse((self.mac / "098 - M - bajka").exists())
+        self.assertFalse((marked / "bajka.krn").exists())
+        self.assertEqual(partial.read_text(encoding="utf-8"), "moja edycja")
+
+        catalog = json.loads(
+            next(self.shared.rglob("catalog.json")).read_text(encoding="utf-8")
+        )
+        self.assertEqual(catalog["entries"]["M - bajka"], "098 - M - bajka")
+
     def test_historic_xml_revision_folder_marks_krn_as_sent(self):
         self.refresh(self.master)
         historic = self.mac / "WYSŁANE" / "047 - XML rev - D - historyczna-nazwa"
