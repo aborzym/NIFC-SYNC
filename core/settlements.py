@@ -87,27 +87,30 @@ def _compare_exact_statistics(entries, paid_entries):
     paid = []
     unpaid = []
     unresolved = []
+    outside = []
 
     for key, items in statistics.items():
         matches = settlements.get(key, [])
 
         if not matches:
             unpaid.extend(items)
-        elif (
-            len(items) == 1
-            and len(matches) == 1
-            and items[0]["note_count"] == matches[0]["note_count"]
-        ):
-            paid.extend(items)
+        elif len(items) == 1 and len(matches) == 1:
+            if items[0]["note_count"] == matches[0]["note_count"]:
+                paid.extend(items)
+            else:
+                # Jednoznaczna para z różną liczbą znaków:
+                # przekaż ją do ręcznego rozstrzygnięcia.
+                unpaid.extend(items)
+                outside.extend(matches)
         else:
             unresolved.extend(items)
 
-    outside = [
+    outside.extend(
         item
         for key, items in settlements.items()
         if key not in statistics
         for item in items
-    ]
+    )
 
     return {
         "paid": tuple(paid),
@@ -120,8 +123,9 @@ def _compare_exact_statistics(entries, paid_entries):
     }
 
 
-def _matching_filename(name):
-    return name.removeprefix("*** ").strip()
+def _matching_filename(item):
+    name = item["file_name"].removeprefix("***").strip()
+    return name.removesuffix(".musicxml")
 
 
 def compare_statistics(entries, paid_entries, approved=()):
@@ -132,14 +136,13 @@ def compare_statistics(entries, paid_entries, approved=()):
     unresolved = list(result["unresolved"])
     outside = list(result["outside"])
     differences = []
+    approved_differences = []
 
     for item in tuple(unpaid):
-        name = _matching_filename(item["file_name"])
-        candidates = [
-            other for other in outside if _matching_filename(other["file_name"]) == name
-        ]
+        name = _matching_filename(item)
+        candidates = [other for other in outside if _matching_filename(other) == name]
         statistics_candidates = [
-            other for other in unpaid if _matching_filename(other["file_name"]) == name
+            other for other in unpaid if _matching_filename(other) == name
         ]
         if not candidates:
             continue
@@ -162,8 +165,17 @@ def compare_statistics(entries, paid_entries, approved=()):
         unpaid.remove(item)
         outside.remove(other)
 
-        if identity in approved and item["note_count"] == other["note_count"]:
+        if identity in approved:
             paid.append(item)
+            if item["note_count"] != other["note_count"]:
+                approved_differences.append(
+                    {
+                        "identity": identity,
+                        "statistics": item,
+                        "settlement": other,
+                        "difference": item["note_count"] - other["note_count"],
+                    }
+                )
         else:
             unresolved.append(item)
             differences.append(
@@ -199,6 +211,42 @@ def compare_statistics(entries, paid_entries, approved=()):
             settled_corrections.append(correction)
         else:
             pending_corrections.append(correction)
+    implicit_corrections = []
+    linked_differences = []
+    for difference in approved_differences:
+        if difference["difference"] <= 0:
+            continue
+
+        score = difference["statistics"]
+        project_id = score["file_name"].split("_", 1)[0]
+        matching = [
+            correction
+            for correction in pending_corrections
+            if correction["scheme"] == score["scheme"]
+            and correction["note_count"] == -difference["difference"]
+            and f"-{project_id}-" in correction["file_name"]
+        ]
+        competing = [
+            other
+            for other in approved_differences
+            if other["statistics"]["scheme"] == score["scheme"]
+            and other["statistics"]["file_name"].split("_", 1)[0] == project_id
+            and other["difference"] == difference["difference"]
+        ]
+        if len(matching) == 1 and len(competing) == 1:
+            correction = matching[0]
+            pending_corrections.remove(correction)
+            settled_corrections.append(correction)
+            implicit_corrections.append(correction)
+            linked_differences.append(difference["identity"])
+
+    gross_shortfall = sum(max(0, item["difference"]) for item in approved_differences)
+    shortfall = sum(
+        max(0, item["difference"])
+        for item in approved_differences
+        if item["identity"] not in linked_differences
+    )
+    overpayment = sum(max(0, -item["difference"]) for item in approved_differences)
 
     return {
         "paid": tuple(paid),
@@ -206,10 +254,19 @@ def compare_statistics(entries, paid_entries, approved=()):
         "unresolved": tuple(unresolved),
         "outside": tuple(outside),
         "differences": tuple(differences),
-        "paid_total": sum(item["note_count"] for item in paid),
+        "approved_differences": tuple(approved_differences),
+        "paid_total": (
+            sum(item["note_count"] for item in paid) - gross_shortfall + overpayment
+        ),
+        "shortfall_total": shortfall,
+        "implicit_corrections": tuple(implicit_corrections),
+        "overpayment_total": overpayment,
         "pending_corrections": tuple(pending_corrections),
         "settled_corrections": tuple(settled_corrections),
-        "unpaid_total": sum(item["note_count"] for item in unpaid)
-        + sum(item["note_count"] for item in pending_corrections),
+        "unpaid_total": (
+            sum(item["note_count"] for item in unpaid)
+            + sum(item["note_count"] for item in pending_corrections)
+            + shortfall
+        ),
         "unresolved_total": sum(item["note_count"] for item in unresolved),
     }

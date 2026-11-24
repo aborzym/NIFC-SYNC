@@ -17,6 +17,7 @@ class SettlementStore:
         self.events = {}
         self.sync_error = ""
         self.loaded = False
+        self.deferred_matches = set()
 
     @property
     def sync_folder(self):
@@ -78,21 +79,33 @@ class SettlementStore:
         self.loaded = True
         self._persist()  # Durable local migration before attempting exchange.
         self._exchange()
+        values, _ = materialize(self.events)
+        self.deferred_matches = {
+            tuple(identity) for identity in values["deferred"].values()
+        }
         return self._values()
 
-    def save(self, settlements, approved_matches):
+    def save(self, settlements, approved_matches, deferred_matches=None):
         if not self.loaded:
             self.load()
-        self.events = record_changes(self.events, settlements, approved_matches)
+        if deferred_matches is None:
+            deferred_matches = self.deferred_matches
+        self.events = record_changes(
+            self.events, settlements, approved_matches, deferred_matches
+        )
         self._persist()
         self._exchange()
+        values, _ = materialize(self.events)
+        self.deferred_matches = {
+            tuple(identity) for identity in values["deferred"].values()
+        }
 
     def _values(self):
         values, _ = materialize(self.events)
         return values["settlement"], {tuple(x) for x in values["approval"].values()}
 
-    def synchronize(self, settlements, approved_matches):
-        self.save(settlements, approved_matches)
+    def synchronize(self, settlements, approved_matches, deferred_matches=None):
+        self.save(settlements, approved_matches, deferred_matches)
         return self._values()
 
     def _exchange(self):

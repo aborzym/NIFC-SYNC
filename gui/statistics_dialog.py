@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -39,6 +40,7 @@ class StatisticsDialog(QDialog):
         self.snapshot = None
         self.settlements = {}
         self.approved_matches = set()
+        self.deferred_matches = set()
         self.setWindowTitle("Statystyki i rozliczenia")
         self.setMinimumWidth(420)
 
@@ -161,6 +163,15 @@ class StatisticsDialog(QDialog):
         self.pdf_table.setMaximumHeight(180)
         layout.addWidget(self.pdf_table)
 
+        report_header = QHBoxLayout()
+        report_header.addStretch()
+        self.approved_differences_button = QPushButton("Decyzje rozliczeń…")
+        self.approved_differences_button.clicked.connect(
+            self._show_approved_differences
+        )
+        report_header.addWidget(self.approved_differences_button)
+        layout.addLayout(report_header)
+
         self.report = QTextEdit()
         self.report.setReadOnly(True)
         layout.addWidget(self.report, stretch=1)
@@ -177,6 +188,7 @@ class StatisticsDialog(QDialog):
         try:
             store = SettlementStore(self.configuration_store)
             self.settlements, self.approved_matches = store.load()
+            self.deferred_matches = set(store.deferred_matches)
             self.settlement_store = store
             self._update_sync_status()
             self._refresh_pdf_table()
@@ -246,8 +258,11 @@ class StatisticsDialog(QDialog):
         try:
             self.settlement_store.snapshot = self.snapshot
             self.settlements, self.approved_matches = self.settlement_store.synchronize(
-                self.settlements, self.approved_matches
+                self.settlements,
+                self.approved_matches,
+                self.deferred_matches,
             )
+            self.deferred_matches = set(self.settlement_store.deferred_matches)
             self._refresh_pdf_table()
             self._show_reconciliation(review=False)
             self._update_sync_status()
@@ -355,6 +370,7 @@ class StatisticsDialog(QDialog):
                 self.settlement_store.save(
                     self.settlements,
                     self.approved_matches,
+                    self.deferred_matches,
                 )
                 if self.settlement_store.sync_error:
                     QMessageBox.warning(
@@ -434,8 +450,18 @@ class StatisticsDialog(QDialog):
         ]
         result = compare_statistics(self.entries, paid_entries, self.approved_matches)
         for difference in result["differences"] if review else ():
+            if difference["identity"] in self.deferred_matches:
+                continue
             item = difference["statistics"]
             other = difference["settlement"]
+            reasons = []
+            if item["scheme"] != other["scheme"]:
+                reasons.append("Inny rodzaj transkrypcji.")
+            if item["file_name"] != other["file_name"]:
+                reasons.append("Inna nazwa pliku.")
+            if item["note_count"] != other["note_count"]:
+                reasons.append("Inna liczba znaków.")
+
             message = (
                 "NIFC:\n"
                 f"{item['scheme']} | {item['note_count']} znaków\n"
@@ -444,27 +470,67 @@ class StatisticsDialog(QDialog):
                 f"{other['scheme']} | {other['note_count']} znaków\n"
                 f"{other['file_name']}"
             )
-            box = QMessageBox(self)
-            box.setWindowTitle("Rozbieżność w rozliczeniu")
-            box.setIcon(QMessageBox.Icon.Question)
-            box.setText(message)
-            box.setInformativeText(
-                "Sprawdź, czy oba wpisy oznaczają tę samą wypłaconą pozycję."
+            explanation = (
+                "Powód: "
+                + " ".join(reasons)
+                + "\nSprawdź, czy oba wpisy oznaczają tę samą wypłaconą pozycję."
             )
-            accept_button = None
-            if item["note_count"] == other["note_count"]:
-                accept_button = box.addButton(
-                    "Uznaj za wypłacone",
-                    QMessageBox.ButtonRole.AcceptRole,
+            difference_count = item["note_count"] - other["note_count"]
+            project_id = item["file_name"].split("_", 1)[0]
+            corrections = [
+                correction
+                for correction in self.entries
+                if difference_count > 0
+                and correction["scheme"] == item["scheme"]
+                and correction["note_count"] == -difference_count
+                and f"-{project_id}-" in correction["file_name"]
+            ]
+            if len(corrections) == 1:
+                explanation += (
+                    "\n\nPrawdopodobna korekta uwzględniona w PDF:\n"
+                    f"{corrections[0]['note_count']} znaków\n"
+                    f"{corrections[0]['file_name']}\n"
+                    "Potwierdź tylko, jeśli PDF uwzględnia tę korektę."
                 )
-            leave_button = box.addButton(
-                "Zostaw do wyjaśnienia",
-                QMessageBox.ButtonRole.RejectRole,
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Rozbieżność w rozliczeniu")
+            dialog.resize(1050, 430)
+            dialog_layout = QVBoxLayout(dialog)
+
+            details = QTextEdit(dialog)
+            details.setReadOnly(True)
+            details.setPlainText(message + "\n\n" + explanation)
+            dialog_layout.addWidget(details)
+
+            buttons = QHBoxLayout()
+            leave_button = QPushButton("Zostaw do wyjaśnienia", dialog)
+            approve_button = QPushButton(
+                (
+                    "Uznaj za wypłacone"
+                    if item["note_count"] == other["note_count"]
+                    else "Uznaj kwotę z PDF"
+                ),
+                dialog,
             )
-            box.setDefaultButton(leave_button)
-            box.exec()
-            if accept_button is not None and box.clickedButton() is accept_button:
+            leave_button.setMinimumWidth(220)
+            approve_button.setMinimumWidth(220)
+            leave_button.clicked.connect(
+                lambda _checked=False, current_dialog=dialog: current_dialog.done(2)
+            )
+            approve_button.clicked.connect(
+                lambda _checked=False, current_dialog=dialog: current_dialog.done(1)
+            )
+            buttons.addWidget(leave_button)
+            buttons.addStretch()
+            buttons.addWidget(approve_button)
+            dialog_layout.addLayout(buttons)
+
+            choice = dialog.exec()
+            if choice == 1:
                 self.approved_matches.add(difference["identity"])
+                self.deferred_matches.discard(difference["identity"])
+            elif choice == 2:
+                self.deferred_matches.add(difference["identity"])
 
         result = compare_statistics(self.entries, paid_entries, self.approved_matches)
         count = f"{result['unpaid_total']:,}".replace(",", " ")
@@ -479,7 +545,7 @@ class StatisticsDialog(QDialog):
 
         for heading, key in (
             ("NIEROZLICZONE", "unpaid"),
-            ("DO WYJAŚNIENIA — POWTÓRZENIA LUB RÓŻNE LICZBY ZNAKÓW", "unresolved"),
+            ("DO WYJAŚNIENIA — RÓŻNICE NAZW, WORKFLOW LUB LICZBY ZNAKÓW", "unresolved"),
         ):
             lines.extend(["", heading])
             items = sorted(
@@ -505,6 +571,7 @@ class StatisticsDialog(QDialog):
             lines.append(
                 f"{item['scheme']} | {item['note_count']} | {item['file_name']}"
             )
+
         corrections = [item for item in self.entries if item["note_count"] < 0]
         correction_total = sum(item["note_count"] for item in corrections)
 
@@ -531,11 +598,140 @@ class StatisticsDialog(QDialog):
             if not result[key]:
                 lines.append("Brak.")
             for item in result[key]:
+                method = ""
+                if key == "settled_corrections":
+                    method = (
+                        " | uwzględniona w kwocie utworu"
+                        if item in result["implicit_corrections"]
+                        else " | osobna pozycja PDF"
+                    )
                 lines.append(
                     f"{item['submission_time'][:10]} | {item['scheme']} | "
-                    f"{item['note_count']} | {item['file_name']}"
+                    f"{item['note_count']} | {item['file_name']}{method}"
                 )
         self.report.setPlainText("\n".join(lines))
+
+    def _show_approved_differences(self):
+        if self.snapshot is None or not self.settlements:
+            QMessageBox.information(
+                self,
+                "Decyzje rozliczeń",
+                "Najpierw pobierz statystyki i dodaj PDF-y rozliczeń.",
+            )
+            return
+
+        paid_entries = [
+            item
+            for settlement in self.settlements.values()
+            for item in settlement["entries"]
+        ]
+        candidates = compare_statistics(self.entries, paid_entries)["differences"]
+        decisions = [
+            difference
+            for difference in candidates
+            if difference["identity"] in self.approved_matches
+            or difference["identity"] in self.deferred_matches
+        ]
+        if not decisions:
+            QMessageBox.information(
+                self, "Decyzje rozliczeń", "Brak zapisanych decyzji."
+            )
+            return
+
+        labels = []
+        for difference in decisions:
+            item = difference["statistics"]
+            state = (
+                "Uznano PDF"
+                if difference["identity"] in self.approved_matches
+                else "Do wyjaśnienia"
+            )
+            labels.append(
+                f"{state} | {item['scheme']} | {item['note_count']} | "
+                f"{item['file_name']}"
+            )
+
+        selected, accepted = QInputDialog.getItem(
+            self, "Decyzje rozliczeń", "Wybierz pozycję:", labels, 0, False
+        )
+        if not accepted:
+            return
+        difference = decisions[labels.index(selected)]
+        item = difference["statistics"]
+        other = difference["settlement"]
+
+        difference_count = item["note_count"] - other["note_count"]
+        project_id = item["file_name"].split("_", 1)[0]
+        corrections = [
+            correction
+            for correction in self.entries
+            if difference_count > 0
+            and correction["scheme"] == item["scheme"]
+            and correction["note_count"] == -difference_count
+            and f"-{project_id}-" in correction["file_name"]
+        ]
+
+        details = [
+            f"NIFC: {item['scheme']} | {item['note_count']} znaków",
+            item["file_name"],
+            "",
+            f"PDF: {other['scheme']} | {other['note_count']} znaków",
+            other["file_name"],
+            "",
+            f"Różnica NIFC − PDF: {difference_count:+d} znaków",
+        ]
+        if len(corrections) == 1:
+            correction = corrections[0]
+            details.extend(
+                [
+                    "",
+                    "PRAWDOPODOBNA KOREKTA UJĘTA W KWOCIE PDF:",
+                    f"{correction['note_count']} znaków",
+                    correction["file_name"],
+                    "",
+                    "Potwierdź tylko, jeśli PDF uwzględnia tę korektę.",
+                ]
+            )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Zmień decyzję rozliczenia")
+        dialog.resize(1050, 430)
+        dialog_layout = QVBoxLayout(dialog)
+
+        description = QTextEdit(dialog)
+        description.setReadOnly(True)
+        description.setPlainText("\n".join(details))
+        dialog_layout.addWidget(description)
+
+        buttons = QHBoxLayout()
+        defer_button = QPushButton("Zostaw do wyjaśnienia", dialog)
+        reset_button = QPushButton("Cofnij decyzję", dialog)
+        approve_button = QPushButton("Uznaj kwotę z PDF", dialog)
+        for button in (defer_button, reset_button, approve_button):
+            button.setMinimumWidth(220)
+        defer_button.clicked.connect(lambda: dialog.done(2))
+        reset_button.clicked.connect(lambda: dialog.done(3))
+        approve_button.clicked.connect(lambda: dialog.done(1))
+        buttons.addWidget(defer_button)
+        buttons.addWidget(reset_button)
+        buttons.addStretch()
+        buttons.addWidget(approve_button)
+        dialog_layout.addLayout(buttons)
+
+        choice = dialog.exec()
+        identity = difference["identity"]
+        if choice == 1:
+            self.approved_matches.add(identity)
+            self.deferred_matches.discard(identity)
+        elif choice == 2:
+            self.approved_matches.discard(identity)
+            self.deferred_matches.add(identity)
+        elif choice == 3:
+            self.approved_matches.discard(identity)
+            self.deferred_matches.discard(identity)
+        else:
+            return
+        self._show_reconciliation(review=False)
 
     def _refresh_pdf_table(self):
         self.pdf_table.setRowCount(0)

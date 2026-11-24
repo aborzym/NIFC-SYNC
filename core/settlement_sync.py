@@ -11,7 +11,7 @@ from uuid import uuid4
 def validate_event(event):
     if not isinstance(event, dict) or event.get("version") != 1:
         raise ValueError("Nieobsługiwany zapis synchronizacji rozliczeń.")
-    if event.get("kind") not in ("settlement", "approval"):
+    if event.get("kind") not in ("settlement", "approval", "deferred"):
         raise ValueError("Nieprawidłowy rodzaj zmiany rozliczeń.")
     if not isinstance(event.get("key"), str):
         raise TypeError("Nieprawidłowy identyfikator rozliczenia.")
@@ -68,7 +68,7 @@ def materialize(events):
     for event in events.values():
         validate_event(event)
         removed.update(event["removed"])
-    values = {"settlement": {}, "approval": {}}
+    values = {"settlement": {}, "approval": {}, "deferred": {}}
     tags = {}
     for tag, event in sorted(events.items()):
         if tag in removed or event["value"] is None:
@@ -88,11 +88,14 @@ def approval_key(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def record_changes(events, settlements, approvals):
+def record_changes(events, settlements, approvals, deferred=None):
     values, tags = materialize(events)
+    if deferred is None:
+        deferred = {tuple(x) for x in values["deferred"].values()}
     wanted = {
         "settlement": settlements,
         "approval": {approval_key(x): list(x) for x in approvals},
+        "deferred": {approval_key(x): list(x) for x in deferred},
     }
     result = dict(events)
     for kind, wanted_values in wanted.items():

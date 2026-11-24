@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from core.settlement_sync import materialize, record_changes
 from core.settlements import compare_statistics, parse_settlement_text
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -242,6 +243,93 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
                 "pending score",
             )
             refresh.assert_called_once()
+
+    def test_approved_pdf_amount_preserves_shortfall_or_overpayment(self):
+        nifc = {
+            "scheme": "XML",
+            "file_name": "utwor.musicxml",
+            "submission_time": "2026-11-21T12:00:00+01:00",
+            "note_count": 100,
+        }
+
+        for pdf_count, unpaid, overpayment in (
+            (90, 10, 0),
+            (110, 0, 10),
+        ):
+            with self.subTest(pdf_count=pdf_count):
+                pdf = {
+                    "scheme": "XML",
+                    "file_name": "utwor.musicxml",
+                    "note_count": pdf_count,
+                }
+                proposed = compare_statistics((nifc,), (pdf,))
+                self.assertEqual(len(proposed["differences"]), 1)
+
+                approved = compare_statistics(
+                    (nifc,),
+                    (pdf,),
+                    {proposed["differences"][0]["identity"]},
+                )
+                self.assertEqual(approved["paid_total"], pdf_count)
+                self.assertEqual(approved["unpaid_total"], unpaid)
+                self.assertEqual(approved["overpayment_total"], overpayment)
+
+    def test_deferred_decision_survives_old_save_and_can_be_removed(self):
+        identity = (
+            "XML",
+            "utwor.musicxml",
+            "2026-11-21T12:00:00+01:00",
+            100,
+            "KRN-diplomatic",
+            "utwor.musicxml",
+            90,
+        )
+
+        events = record_changes({}, {}, set(), {identity})
+        events = record_changes(events, {}, set())
+        values, _ = materialize(events)
+        self.assertEqual(
+            {tuple(value) for value in values["deferred"].values()},
+            {identity},
+        )
+
+        events = record_changes(events, {}, set(), set())
+        values, _ = materialize(events)
+        self.assertEqual(values["deferred"], {})
+
+    def test_approved_pdf_difference_can_include_nifc_correction(self):
+        stem = "pl-cz--iii-248--001-002_gulitz-alexius--requiem-ex-eis-kyrie"
+        score = {
+            "scheme": "XML",
+            "file_name": f"{stem}.musicxml",
+            "submission_time": "2026-11-02T12:00:00+01:00",
+            "note_count": 3290,
+        }
+        correction = {
+            "scheme": "XML",
+            "file_name": (
+                "*** aborzym-korektaznakow-pl-cz--iii-248--001-002-2026-11-03"
+            ),
+            "submission_time": "2026-11-03T12:00:00+01:00",
+            "note_count": -1302,
+        }
+        pdf = {
+            "scheme": "XML",
+            "file_name": f"{stem}.musicxml",
+            "note_count": 1988,
+        }
+
+        proposed = compare_statistics((score, correction), (pdf,))
+        approved = compare_statistics(
+            (score, correction),
+            (pdf,),
+            {proposed["differences"][0]["identity"]},
+        )
+        self.assertEqual(approved["paid_total"], 1988)
+        self.assertEqual(approved["unpaid_total"], 0)
+        self.assertEqual(approved["shortfall_total"], 0)
+        self.assertEqual(approved["pending_corrections"], ())
+        self.assertEqual(approved["settled_corrections"], (correction,))
 
 
 if __name__ == "__main__":
