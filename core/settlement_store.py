@@ -18,6 +18,7 @@ class SettlementStore:
         self.sync_error = ""
         self.loaded = False
         self.deferred_matches = set()
+        self.accepted_revisions = set()
 
     @property
     def sync_folder(self):
@@ -83,16 +84,40 @@ class SettlementStore:
         self.deferred_matches = {
             tuple(identity) for identity in values["deferred"].values()
         }
+        self.accepted_revisions = {
+            tuple(identity) for identity in values["revision"].values()
+        }
         return self._values()
 
-    def save(self, settlements, approved_matches, deferred_matches=None):
+    def save(
+        self,
+        settlements,
+        approved_matches,
+        deferred_matches=None,
+        accepted_revisions=None,
+    ):
         if not self.loaded:
             self.load()
         if deferred_matches is None:
             deferred_matches = self.deferred_matches
+        if accepted_revisions is None:
+            accepted_revisions = self.accepted_revisions
         self.events = record_changes(
-            self.events, settlements, approved_matches, deferred_matches
+            self.events,
+            settlements,
+            approved_matches,
+            deferred_matches,
+            accepted_revisions,
         )
+        self._persist()
+        self._exchange()
+        values, _ = materialize(self.events)
+        self.deferred_matches = {
+            tuple(identity) for identity in values["deferred"].values()
+        }
+        self.accepted_revisions = {
+            tuple(identity) for identity in values["revision"].values()
+        }
         self._persist()
         self._exchange()
         values, _ = materialize(self.events)
@@ -104,8 +129,19 @@ class SettlementStore:
         values, _ = materialize(self.events)
         return values["settlement"], {tuple(x) for x in values["approval"].values()}
 
-    def synchronize(self, settlements, approved_matches, deferred_matches=None):
-        self.save(settlements, approved_matches, deferred_matches)
+    def synchronize(
+        self,
+        settlements,
+        approved_matches,
+        deferred_matches=None,
+        accepted_revisions=None,
+    ):
+        self.save(
+            settlements,
+            approved_matches,
+            deferred_matches,
+            accepted_revisions,
+        )
         return self._values()
 
     def _exchange(self):

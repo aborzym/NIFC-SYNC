@@ -102,6 +102,11 @@ def _compare_exact_statistics(entries, paid_entries):
                 # przekaż ją do ręcznego rozstrzygnięcia.
                 unpaid.extend(items)
                 outside.extend(matches)
+        elif len(items) == 1:
+            # Kilka pozycji PDF dla jednej pozycji NIFC:
+            # zapisane zatwierdzenie wskaże właściwą parę.
+            unpaid.extend(items)
+            outside.extend(matches)
         else:
             unresolved.extend(items)
 
@@ -128,7 +133,7 @@ def _matching_filename(item):
     return name.removesuffix(".musicxml")
 
 
-def compare_statistics(entries, paid_entries, approved=()):
+def compare_statistics(entries, paid_entries, approved=(), accepted_revisions=()):
     regular_entries = tuple(item for item in entries if item["note_count"] >= 0)
     result = _compare_exact_statistics(regular_entries, paid_entries)
     paid = list(result["paid"])
@@ -147,12 +152,34 @@ def compare_statistics(entries, paid_entries, approved=()):
         if not candidates:
             continue
 
-        if len(candidates) != 1 or len(statistics_candidates) != 1:
+        if len(statistics_candidates) != 1:
             unpaid.remove(item)
             unresolved.append(item)
             continue
 
-        other = candidates[0]
+        if len(candidates) == 1:
+            other = candidates[0]
+        else:
+            chosen = [
+                candidate
+                for candidate in candidates
+                if (
+                    item["scheme"],
+                    item["file_name"],
+                    item["submission_time"],
+                    item["note_count"],
+                    candidate["scheme"],
+                    candidate["file_name"],
+                    candidate["note_count"],
+                )
+                in approved
+            ]
+            if len(chosen) != 1:
+                unpaid.remove(item)
+                unresolved.append(item)
+                continue
+            other = chosen[0]
+
         identity = (
             item["scheme"],
             item["file_name"],
@@ -247,16 +274,31 @@ def compare_statistics(entries, paid_entries, approved=()):
         if item["identity"] not in linked_differences
     )
     overpayment = sum(max(0, -item["difference"]) for item in approved_differences)
-
+    accepted_revision_ids = set(accepted_revisions)
+    accepted_revision_entries = [
+        item
+        for item in outside
+        if item.get("_pdf_id") in accepted_revision_ids
+        and ".krn-revision" in item["file_name"].casefold()
+    ]
+    outside = [item for item in outside if item not in accepted_revision_entries]
+    accepted_revision_total = sum(
+        item["note_count"] for item in accepted_revision_entries
+    )
     return {
         "paid": tuple(paid),
         "unpaid": tuple(unpaid),
         "unresolved": tuple(unresolved),
         "outside": tuple(outside),
+        "accepted_revisions": tuple(accepted_revision_entries),
+        "accepted_revision_total": accepted_revision_total,
         "differences": tuple(differences),
         "approved_differences": tuple(approved_differences),
         "paid_total": (
-            sum(item["note_count"] for item in paid) - gross_shortfall + overpayment
+            sum(item["note_count"] for item in paid)
+            - gross_shortfall
+            + overpayment
+            + accepted_revision_total
         ),
         "shortfall_total": shortfall,
         "implicit_corrections": tuple(implicit_corrections),

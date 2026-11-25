@@ -170,6 +170,9 @@ class StatisticsDialog(QDialog):
             self._show_approved_differences
         )
         report_header.addWidget(self.approved_differences_button)
+        self.revisions_button = QPushButton("Rewizje PDF…")
+        self.revisions_button.clicked.connect(self._review_revisions)
+        report_header.addWidget(self.revisions_button)
         layout.addLayout(report_header)
 
         self.report = QTextEdit()
@@ -189,6 +192,7 @@ class StatisticsDialog(QDialog):
             store = SettlementStore(self.configuration_store)
             self.settlements, self.approved_matches = store.load()
             self.deferred_matches = set(store.deferred_matches)
+            self.accepted_revisions = set(store.accepted_revisions)
             self.settlement_store = store
             self._update_sync_status()
             self._refresh_pdf_table()
@@ -261,8 +265,10 @@ class StatisticsDialog(QDialog):
                 self.settlements,
                 self.approved_matches,
                 self.deferred_matches,
+                self.accepted_revisions,
             )
             self.deferred_matches = set(self.settlement_store.deferred_matches)
+            self.accepted_revisions = set(self.settlement_store.accepted_revisions)
             self._refresh_pdf_table()
             self._show_reconciliation(review=False)
             self._update_sync_status()
@@ -371,6 +377,7 @@ class StatisticsDialog(QDialog):
                     self.settlements,
                     self.approved_matches,
                     self.deferred_matches,
+                    self.accepted_revisions,
                 )
                 if self.settlement_store.sync_error:
                     QMessageBox.warning(
@@ -421,6 +428,13 @@ class StatisticsDialog(QDialog):
         self._refresh_pdf_table()
         self._show_reconciliation()
 
+    def _paid_entries(self):
+        return [
+            {**item, "_pdf_id": (digest, index)}
+            for digest, settlement in self.settlements.items()
+            for index, item in enumerate(settlement["entries"])
+        ]
+
     def _show_reconciliation(self, *, review=True):
         if self.snapshot is None:
             self.unpaid_label.setText("Niewypłacone: —")
@@ -443,12 +457,13 @@ class StatisticsDialog(QDialog):
             )
             return
 
-        paid_entries = [
-            item
-            for settlement in self.settlements.values()
-            for item in settlement["entries"]
-        ]
-        result = compare_statistics(self.entries, paid_entries, self.approved_matches)
+        paid_entries = self._paid_entries()
+        result = compare_statistics(
+            self.entries,
+            paid_entries,
+            self.approved_matches,
+            self.accepted_revisions,
+        )
         for difference in result["differences"] if review else ():
             if difference["identity"] in self.deferred_matches:
                 continue
@@ -532,7 +547,12 @@ class StatisticsDialog(QDialog):
             elif choice == 2:
                 self.deferred_matches.add(difference["identity"])
 
-        result = compare_statistics(self.entries, paid_entries, self.approved_matches)
+        result = compare_statistics(
+            self.entries,
+            paid_entries,
+            self.approved_matches,
+            self.accepted_revisions,
+        )
         count = f"{result['unpaid_total']:,}".replace(",", " ")
         self.unpaid_label.setText(f"Niewypłacone: {count} znaków")
         if result["unresolved_total"]:
@@ -543,13 +563,16 @@ class StatisticsDialog(QDialog):
         total = sum(item["note_count"] for item in self.entries)
         lines = []
 
+        def is_revision(item):
+            return ".krn-revision" in item["file_name"].casefold()
+
         for heading, key in (
             ("NIEROZLICZONE", "unpaid"),
             ("DO WYJAŚNIENIA — RÓŻNICE NAZW, WORKFLOW LUB LICZBY ZNAKÓW", "unresolved"),
         ):
             lines.extend(["", heading])
             items = sorted(
-                result[key],
+                (item for item in result[key] if not is_revision(item)),
                 key=lambda item: (
                     item["submission_time"],
                     item["scheme"],
@@ -565,11 +588,39 @@ class StatisticsDialog(QDialog):
                 )
 
         lines.extend(["", "POZYCJE PDF BEZ ODPOWIEDNIKA W POBRANYCH DANYCH"])
-        if not result["outside"]:
+        outside_regular = [item for item in result["outside"] if not is_revision(item)]
+        if not outside_regular:
             lines.append("Brak.")
-        for item in result["outside"]:
+        for item in outside_regular:
             lines.append(
                 f"{item['scheme']} | {item['note_count']} | {item['file_name']}"
+            )
+
+        lines.extend(["", "REVISIONS"])
+        revisions = [
+            ("NIFC — nierozliczone", item)
+            for item in result["unpaid"]
+            if is_revision(item)
+        ]
+        revisions.extend(
+            ("NIFC — do wyjaśnienia", item)
+            for item in result["unresolved"]
+            if is_revision(item)
+        )
+        revisions.extend(
+            ("PDF — bez przypisanej pozycji NIFC", item)
+            for item in result["outside"]
+            if is_revision(item)
+        )
+        revisions.extend(
+            ("PDF — uznana rewizja", item) for item in result["accepted_revisions"]
+        )
+        if not revisions:
+            lines.append("Brak.")
+        for status, item in revisions:
+            lines.append(
+                f"{status} | {item['scheme']} | {item['note_count']} | "
+                f"{item['file_name']}"
             )
 
         corrections = [item for item in self.entries if item["note_count"] < 0]
@@ -585,7 +636,8 @@ class StatisticsDialog(QDialog):
                     "Korekty jeszcze nieuwzględnione w PDF-ach: "
                     f"{sum(item['note_count'] for item in result['pending_corrections'])}"
                 ),
-                f"Wypłacone — dopasowane: {result['paid_total']}",
+                f"Wypłacone — łącznie: {result['paid_total']}",
+                (f"W tym rewizje uznane z PDF: {result['accepted_revision_total']}"),
                 f"Do wyjaśnienia: {result['unresolved_total']}",
                 f"Wczytane PDF-y: {len(self.settlements)}",
             ]
@@ -611,6 +663,96 @@ class StatisticsDialog(QDialog):
                 )
         self.report.setPlainText("\n".join(lines))
 
+    def _review_revisions(self):
+        if self.snapshot is None or not self.settlements:
+            QMessageBox.information(
+                self,
+                "Rewizje PDF",
+                "Najpierw pobierz statystyki i dodaj PDF-y rozliczeń.",
+            )
+            return
+
+        result = compare_statistics(
+            self.entries,
+            self._paid_entries(),
+            self.approved_matches,
+            self.accepted_revisions,
+        )
+        revisions = [
+            item
+            for item in result["outside"]
+            if ".krn-revision" in item["file_name"].casefold()
+        ]
+        revisions.extend(result["accepted_revisions"])
+
+        if not revisions:
+            QMessageBox.information(self, "Rewizje PDF", "Brak rewizji do oceny.")
+            return
+
+        labels = []
+        for item in revisions:
+            digest, index = item["_pdf_id"]
+            filename = self.settlements[digest].get("filename", "Dokument PDF")
+            status = (
+                "UZNANA" if item["_pdf_id"] in self.accepted_revisions else "DO OCENY"
+            )
+            labels.append(
+                f"{status} | {filename} | pozycja {index + 1} | "
+                f"{item['note_count']} | {item['file_name']}"
+            )
+
+        selected, accepted = QInputDialog.getItem(
+            self, "Rewizje PDF", "Wybierz pozycję:", labels, 0, False
+        )
+        if not accepted:
+            return
+
+        item = revisions[labels.index(selected)]
+        pdf_id = item["_pdf_id"]
+        filename = self.settlements[pdf_id[0]].get("filename", "Dokument PDF")
+        already_accepted = pdf_id in self.accepted_revisions
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Decyzja o rewizji PDF")
+        dialog.resize(1000, 380)
+        dialog_layout = QVBoxLayout(dialog)
+
+        details = QTextEdit(dialog)
+        details.setReadOnly(True)
+        details.setPlainText(
+            f"PDF: {filename}\n"
+            f"Transza: {item['tranche']}\n"
+            f"Pozycja w PDF: {pdf_id[1] + 1}\n"
+            f"Workflow: {item['scheme']}\n"
+            f"Znaki: {item['note_count']}\n"
+            f"Nazwa: {item['file_name']}\n\n"
+            "Ta rewizja jest osobną pozycją PDF. Jej uznanie doliczy "
+            "wskazaną liczbę znaków do wypłaconych."
+        )
+        dialog_layout.addWidget(details)
+
+        buttons = QHBoxLayout()
+        cancel_button = QPushButton("Bez zmian", dialog)
+        action_button = QPushButton(
+            "Cofnij uznanie rewizji" if already_accepted else "Uznaj rewizję z PDF",
+            dialog,
+        )
+        action_button.setMinimumWidth(240)
+        cancel_button.clicked.connect(dialog.reject)
+        action_button.clicked.connect(dialog.accept)
+        buttons.addStretch()
+        buttons.addWidget(cancel_button)
+        buttons.addWidget(action_button)
+        dialog_layout.addLayout(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        if already_accepted:
+            self.accepted_revisions.remove(pdf_id)
+        else:
+            self.accepted_revisions.add(pdf_id)
+        self._show_reconciliation(review=False)
+
     def _show_approved_differences(self):
         if self.snapshot is None or not self.settlements:
             QMessageBox.information(
@@ -620,11 +762,7 @@ class StatisticsDialog(QDialog):
             )
             return
 
-        paid_entries = [
-            item
-            for settlement in self.settlements.values()
-            for item in settlement["entries"]
-        ]
+        paid_entries = self._paid_entries()
         candidates = compare_statistics(self.entries, paid_entries)["differences"]
         decisions = [
             difference

@@ -141,6 +141,22 @@ class SettlementSyncTest(unittest.TestCase):
         for path in self.shared.rglob("*.json"):
             self.assertNotIn("secret-local-statistics", path.read_text())
 
+    def test_accepted_revisions_sync_and_can_be_revoked(self):
+        revision_id = ("pdf-digest", 3)
+
+        first = self.store("linux")
+        first.save({}, set(), accepted_revisions={revision_id})
+
+        second = self.store("mac")
+        second.load()
+        self.assertEqual(second.accepted_revisions, {revision_id})
+
+        second.save({}, set(), accepted_revisions=set())
+
+        first.load()
+        self.assertEqual(first.accepted_revisions, set())
+        self.assertEqual(second.accepted_revisions, set())
+
     def test_invalid_remote_keeps_local_data_and_reports_error(self):
         first = self.store("linux")
         first.save({"a": document()}, set())

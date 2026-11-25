@@ -11,7 +11,7 @@ from uuid import uuid4
 def validate_event(event):
     if not isinstance(event, dict) or event.get("version") != 1:
         raise ValueError("Nieobsługiwany zapis synchronizacji rozliczeń.")
-    if event.get("kind") not in ("settlement", "approval", "deferred"):
+    if event.get("kind") not in ("settlement", "approval", "deferred", "revision"):
         raise ValueError("Nieprawidłowy rodzaj zmiany rozliczeń.")
     if not isinstance(event.get("key"), str):
         raise TypeError("Nieprawidłowy identyfikator rozliczenia.")
@@ -40,6 +40,15 @@ def validate_event(event):
                     )
                 ):
                     raise ValueError("Nieprawidłowa pozycja rozliczenia.")
+        elif event["kind"] == "revision":
+            if (
+                not isinstance(value, list)
+                or len(value) != 2
+                or not isinstance(value[0], str)
+                or type(value[1]) is not int
+                or value[1] < 0
+            ):
+                raise ValueError("Nieprawidłowe zatwierdzenie rewizji.")
         elif (
             not isinstance(value, list)
             or len(value) != 7
@@ -68,7 +77,7 @@ def materialize(events):
     for event in events.values():
         validate_event(event)
         removed.update(event["removed"])
-    values = {"settlement": {}, "approval": {}, "deferred": {}}
+    values = {"settlement": {}, "approval": {}, "deferred": {}, "revision": {}}
     tags = {}
     for tag, event in sorted(events.items()):
         if tag in removed or event["value"] is None:
@@ -88,14 +97,17 @@ def approval_key(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def record_changes(events, settlements, approvals, deferred=None):
+def record_changes(events, settlements, approvals, deferred=None, revisions=None):
     values, tags = materialize(events)
     if deferred is None:
         deferred = {tuple(x) for x in values["deferred"].values()}
+    if revisions is None:
+        revisions = {tuple(x) for x in values["revision"].values()}
     wanted = {
         "settlement": settlements,
         "approval": {approval_key(x): list(x) for x in approvals},
         "deferred": {approval_key(x): list(x) for x in deferred},
+        "revision": {approval_key(x): list(x) for x in revisions},
     }
     result = dict(events)
     for kind, wanted_values in wanted.items():

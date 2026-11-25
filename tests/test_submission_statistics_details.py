@@ -331,6 +331,89 @@ class SubmissionStatisticsDetailsTest(unittest.TestCase):
         self.assertEqual(approved["pending_corrections"], ())
         self.assertEqual(approved["settled_corrections"], (correction,))
 
+    def test_approved_match_selects_one_of_two_pdf_rows(self):
+        filename = "utwor.krn-revision"
+        nifc = {
+            "scheme": "KRN-diplomatic",
+            "file_name": "*** \t" + filename,
+            "submission_time": "2026-10-19T11:47:46",
+            "note_count": 3779,
+        }
+        third_pdf = {
+            "scheme": "KRN-diplomatic",
+            "file_name": filename,
+            "note_count": 3779,
+        }
+        fourth_pdf = {
+            "scheme": "KRN-diplomatic",
+            "file_name": "***" + filename,
+            "note_count": 3779,
+        }
+        approved_identity = (
+            nifc["scheme"],
+            nifc["file_name"],
+            nifc["submission_time"],
+            nifc["note_count"],
+            third_pdf["scheme"],
+            third_pdf["file_name"],
+            third_pdf["note_count"],
+        )
+
+        result = compare_statistics(
+            (nifc,), (third_pdf, fourth_pdf), {approved_identity}
+        )
+        self.assertEqual(result["paid"], (nifc,))
+        self.assertEqual(result["unresolved"], ())
+        self.assertEqual(result["outside"], (fourth_pdf,))
+        self.assertEqual(result["paid_total"], 3779)
+
+    def test_accepted_revision_is_separate_pdf_payment(self):
+        nifc = {
+            "scheme": "KRN-diplomatic",
+            "file_name": "*** \tutwor.krn-revision",
+            "submission_time": "2026-10-19T11:47:46",
+            "note_count": 3779,
+        }
+        first_pdf = {
+            "scheme": "KRN-diplomatic",
+            "file_name": "utwor.krn-revision",
+            "note_count": 3779,
+            "_pdf_id": ("pdf-03", 0),
+        }
+        second_pdf = {
+            "scheme": "KRN-diplomatic",
+            "file_name": "***utwor.krn-revision",
+            "note_count": 3779,
+            "_pdf_id": ("pdf-04", 0),
+        }
+        normal_pdf = {
+            "scheme": "KRN-diplomatic",
+            "file_name": "utwor.krn",
+            "note_count": 3652,
+            "_pdf_id": ("pdf-03", 1),
+        }
+        approval = (
+            nifc["scheme"],
+            nifc["file_name"],
+            nifc["submission_time"],
+            nifc["note_count"],
+            first_pdf["scheme"],
+            first_pdf["file_name"],
+            first_pdf["note_count"],
+        )
+
+        result = compare_statistics(
+            (nifc,),
+            (first_pdf, second_pdf, normal_pdf),
+            {approval},
+            {("pdf-04", 0)},
+        )
+        self.assertEqual(result["paid"], (nifc,))
+        self.assertEqual(result["accepted_revisions"], (second_pdf,))
+        self.assertEqual(result["outside"], (normal_pdf,))
+        self.assertEqual(result["paid_total"], 7558)
+        self.assertEqual(result["unresolved_total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
